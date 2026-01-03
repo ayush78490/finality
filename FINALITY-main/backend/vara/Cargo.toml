@@ -1,0 +1,20 @@
+[package]
+name = "prediction-market-vara"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gstd = "1.6.1"
+parity-scale-codec = { version = "3.6", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["derive"] }
+
+[build-dependencies]
+gear-wasm-builder = "1.6.1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "abort"
+
+[lib]
+crate-type = ["cdylib", "rlib"]

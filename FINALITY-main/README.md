@@ -9,119 +9,89 @@ Finality is a next-generation decentralized prediction market that leverages a *
 
 ---
 
-## 🚀 Overview
+## 🚀 Live on Testnet
+
+The core settlement contracts are currently deployed and active on the **Ethereum Sepolia Testnet**:
+- **Settlement Contract**: `0x52Ca4B7673646B8b922ea00ccef6DD0375B14619`
+- **Vara Program ID**: `0x0097e078e6e666d5be98c4839ee4d83c6c3e34a9e508bc84e10bee65ead06ba1`
+
+---
+
+## ✨ Overview
 
 Finality transforms prediction markets by separating **settlement** from **computation**:
-- **Settlement (Ethereum)**: Securely handles user funds (ETH/Tokens), market finality, and payouts.
-- **Computation (Vara Network)**: Executes real-time AMM (Automated Market Maker) calculations using the constant product formula ($x \cdot y = k$) for instant price discovery and order processing.
-- **Bridge (Relayer)**: A dedicated service that synchronizes events between Ethereum and Vara, ensuring a seamless cross-chain experience.
-
-## ✨ Key Features
-
-- 🗳️ **Permissionless Market Creation**: Create markets with custom questions, categories, and initial liquidity.
-- 💹 **Real-time Trading**: Trade YES/NO tokens with instant price updates powered by Vara's high-speed computation.
-- 💰 **AMM Liquidity**: Automated pricing using a sophisticated bonding curve.
-- 💸 **Dual Fee System**: Integrated 3% fee structure (2% for market creators, 1% for the platform).
-- 🦊 **Web3 Native**: Seamless wallet integration using RainbowKit and Wagmi v2.
-- 🎨 **Premium UI**: Modern, responsive interface with fluid animations and real-time data feeds.
+- **Settlement (Ethereum)**: Handles user funds (ETH/Tokens), market lifecycles, and secure payouts.
+- **Computation (Vara Network)**: Executes real-time AMM (Automated Market Maker) calculations for instant price discovery using the constant product formula ($x \cdot y = k$).
+- **Bridge (Relayer)**: Synchronizes cross-chain events between Ethereum and Vara.
 
 ---
 
-## 🛠️ Technical Architecture
+## 💻 Quickstart (Developer Setup)
 
-Finality uses a multi-layered stack designed for scalability and security:
-
-### 1. Smart Contracts (`/backend/ethereum`)
-- **PredictionMarketSettlement.sol**: The core engine on Ethereum. Handles market lifecycles, deposits, and redemptions.
-- **OutcomeToken.sol**: ERC20 tokens representing YES/NO outcomes.
-
-### 2. Computation Engine (`/backend/vara`)
-- Rust-based programs running on the Vara Network (Gear Protocol) for high-performance order matching and price calculations.
-
-### 3. Relayer Service (`/backend/relayer`)
-- A TypeScript-based backend that listens for Ethereum events and coordinates actions on the Vara Network.
-
-### 4. Frontend Application (`/src`)
-- Built with **Next.js 16**, **React 19**, and **Tailwind CSS**.
-- **Wagmi & Viem**: For robust blockchain interactions.
-- **Framer Motion**: For a premium, interactive user experience.
-
----
-
-## 💻 Local Quickstart
-
-Follow these steps to get a full development environment running locally.
+Follow these steps to run the frontend and relayer locally, connected to the live Sepolia testnet.
 
 ### 1. Prerequisites
-- **Node.js** (v18.x or higher)
+- **Node.js** (v18.x+)
 - **NPM** or **Yarn**
-- **MetaMask** (or any EIP-1193 wallet)
+- **MetaMask** (configured for Sepolia)
 
-### 2. Clone and Install
+### 2. Installation
 ```bash
 # Clone the repository
 git clone https://github.com/ayush78490/finality.git
 cd finality
 
-# Install Root dependencies (Frontend)
+# Install all dependencies
 npm install
-
-# Install Ethereum dependencies
 cd backend/ethereum && npm install
-
-# Install Relayer dependencies
 cd ../relayer && npm install
 ```
 
-### 3. Start Local Services
+### 3. Running Locally (Connected to Sepolia)
 
-You will need three terminal windows:
+You will need two terminal windows:
 
-**Terminal 1: Local Ethereum Node**
-```bash
-cd backend/ethereum
-npx hardhat node
-```
-
-**Terminal 2: Relayer Service**
+**Terminal 1: Relayer Service**
 ```bash
 cd backend/relayer
 npm run build
 node dist/relayer/src/index.js
 ```
+*Note: Ensure your `.env` in the relayer directory has a Sepolia RPC URL and a valid private key.*
 
-**Terminal 3: Frontend Web App**
+**Terminal 2: Frontend Web App**
 ```bash
 # From the root directory
 npm run dev
 ```
+Accessible at [http://localhost:3000](http://localhost:3000).
 
-### 4. Setup Wallet
-1. Open http://localhost:3000.
-2. Add a custom network to MetaMask:
-   - RPC URL: `http://127.0.0.1:8545`
-   - Chain ID: `31337`
-3. Import one of the private keys provided by the `hardhat node` output to get test ETH.
+---
+
+## 🛠️ Optional: Local Blockchain Development
+
+If you wish to modify the smart contracts or run a completely isolated environment:
+
+1. **Start Hardhat Node**:
+   ```bash
+   cd backend/ethereum
+   npx hardhat node
+   ```
+2. **Deploy Contracts**:
+   ```bash
+   npx hardhat run scripts/deploy.ts --network localhost
+   ```
+3. **Update Env**: Update `NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS` to the newly deployed local address.
 
 ---
 
 ## 🤝 Contributing
 
-We welcome contributions from developers, designers, and blockchain enthusiasts!
-
-1. **Fork** the repository.
-2. **Create a Feature Branch** (`git checkout -b feature/AmazingFeature`).
-3. **Commit Your Changes** (`git commit -m 'Add some AmazingFeature'`).
-4. **Push to the Branch** (`git push origin feature/AmazingFeature`).
-5. **Open a Pull Request**.
-
-Please ensure your code follows the existing style and includes proper TypeScript types.
-
----
-
-## 📄 License
-
-Distributed under the MIT License. See `LICENSE` (if available) for more information.
+We welcome contributions!
+1. **Fork** the repo.
+2. **Branch** (`feature/your-feature`).
+3. **Commit** and **Push**.
+4. **Pull Request**.
 
 ---
 

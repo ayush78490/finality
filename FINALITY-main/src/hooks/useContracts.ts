@@ -7,6 +7,9 @@ import { useCallback, useMemo } from 'react';
 
 // Hook to resolve the settlement address (handles ENS)
 export function useSettlementAddress() {
+  if (!CONTRACTS.PREDICTION_MARKET || CONTRACTS.PREDICTION_MARKET.trim() === '') {
+    throw new Error('NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS environment variable is not set. Please set it in your .env file.');
+  }
   const isEns = CONTRACTS.PREDICTION_MARKET.endsWith('.eth');
 
   const { data: ensAddress, isLoading: isEnsLoading } = useEnsAddress({

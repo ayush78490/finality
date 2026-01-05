@@ -6,7 +6,7 @@ export const OUTCOME_TOKEN_ABI = OutcomeToken__factory.abi;
 
 // Contract addresses
 export const CONTRACTS = {
-  PREDICTION_MARKET: process.env.NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS as `0x${string}` | string,
+  PREDICTION_MARKET: process.env.NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS || '',
 } as const;
 
 // Market data structure matching smart contract

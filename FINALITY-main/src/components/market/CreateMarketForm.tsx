@@ -1,20 +1,24 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useBalance } from 'wagmi';
 import { Category } from '@/lib/types';
 import { useCreateMarket } from '@/hooks/useContracts';
 import { parseContractValue } from '@/lib/contractUtils';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import { toast } from 'sonner';
+import { formatEther } from 'viem';
 
 interface CreateMarketFormProps {
     onSuccess?: () => void;
 }
 
 export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
-    const { address, isConnected } = useAccount();
+    const { address, isConnected, chain } = useAccount();
+    const { data: balance, isLoading: balanceLoading } = useBalance({
+        address: address,
+    });
     const [formData, setFormData] = useState({
         question: '',
         category: Category.CRYPTO,
@@ -24,7 +28,7 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { createMarket, isLoading } = useCreateMarket();
+    const { createMarket, isLoading, isWrongNetwork } = useCreateMarket();
 
     const handleInputChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -35,6 +39,14 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
 
         if (!isConnected || !address) {
             toast.error('Please connect your wallet first');
+            return;
+        }
+
+        // Check if on correct network
+        if (isWrongNetwork || chain?.id !== 560048) {
+            toast.error('Wrong Network!', {
+                description: 'Please switch to Hoodi Testnet (Chain ID: 560048) in your wallet',
+            });
             return;
         }
 
@@ -84,11 +96,18 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
                 initialNo: parseContractValue(initialNo),
             };
 
-            const tx = await createMarket(params);
+            const txHash = await createMarket(params);
+            
+            console.log('Market creation transaction:', txHash);
+            console.log('Waiting for confirmation...');
 
             toast.success('Market created successfully!', {
-                description: `Transaction hash: ${tx}`,
+                description: `Transaction: ${txHash}`,
+                duration: 5000,
             });
+
+            // Wait a bit for the transaction to be mined
+            await new Promise(resolve => setTimeout(resolve, 3000));
 
             // Reset form
             setFormData({
@@ -98,6 +117,9 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
                 initialYes: '',
                 initialNo: '',
             });
+
+            // Refresh the page to reload markets
+            window.location.reload();
 
             onSuccess?.();
 
@@ -113,9 +135,27 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
 
     return (
         <Card className="max-w-2xl mx-auto p-8">
-            <h2 className="text-3xl font-bold mb-6" style={{ color: 'var(--color-text-primary)' }}>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                 Create New Market
             </h2>
+                {isConnected && address && (
+                    <div className="text-right">
+                        <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                            Wallet Balance
+                        </p>
+                        <p className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                            {balanceLoading ? (
+                                '...'
+                            ) : balance ? (
+                                `${parseFloat(formatEther(balance.value)).toFixed(4)} ${balance.symbol}`
+                            ) : (
+                                '0.0000 ETH'
+                            )}
+                        </p>
+                    </div>
+                )}
+            </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Question */}
@@ -254,18 +294,41 @@ export default function CreateMarketForm({ onSuccess }: CreateMarketFormProps) {
                     </div>
                 )}
 
+                {/* Network Warning */}
+                {isConnected && isWrongNetwork && (
+                    <div className="p-4 mb-4" style={{ 
+                        backgroundColor: 'var(--color-bg-tertiary)', 
+                        clipPath: 'polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 6px 100%, 0 calc(100% - 6px))' 
+                    }}>
+                        <p className="text-white font-semibold">
+                            ⚠️ Wrong Network Detected
+                        </p>
+                        <p className="text-white text-sm mt-1">
+                            Current: {chain?.name || 'Unknown'} (Chain ID: {chain?.id || 'Unknown'})
+                        </p>
+                        <p className="text-white text-sm mt-1">
+                            Required: Hoodi Testnet (Chain ID: 560048)
+                        </p>
+                        <p className="text-white text-xs mt-2">
+                            Click the network button in your wallet to switch networks
+                        </p>
+                    </div>
+                )}
+
                 {/* Submit Button */}
                 <Button
                     type="submit"
                     variant="primary"
                     size="lg"
                     fullWidth
-                    disabled={!isConnected || isLoading || isSubmitting}
+                    disabled={!isConnected || isLoading || isSubmitting || isWrongNetwork}
                 >
                     {isLoading || isSubmitting
                         ? 'Creating Market...'
                         : !isConnected
                             ? 'Connect Wallet to Create Market'
+                            : isWrongNetwork
+                                ? 'Switch to Hoodi Testnet'
                             : 'Create Market'
                     }
                 </Button>

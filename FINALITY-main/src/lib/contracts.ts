@@ -1,7 +1,7 @@
-import { PredictionMarketSettlement__factory, OutcomeToken__factory } from '../../backend/ethereum/typechain-types';
+import { PredictionMarketSettlementVaraEth__factory, OutcomeToken__factory } from '../../backend/ethereum/typechain-types';
 
 // Contract ABIs
-export const PREDICTION_MARKET_ABI = PredictionMarketSettlement__factory.abi;
+export const PREDICTION_MARKET_ABI = PredictionMarketSettlementVaraEth__factory.abi;
 export const OUTCOME_TOKEN_ABI = OutcomeToken__factory.abi;
 
 // Contract addresses
@@ -9,7 +9,7 @@ export const CONTRACTS = {
   PREDICTION_MARKET: process.env.NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS || '',
 } as const;
 
-// Market data structure matching smart contract
+// Market data structure matching smart contract (PredictionMarketSettlementVaraEth)
 export interface ContractMarket {
   creator: `0x${string}`;
   question: string;
@@ -22,7 +22,7 @@ export interface ContractMarket {
   totalBacking: bigint;
   platformFees: bigint;
   creatorFees: bigint;
-  varaStateHash: `0x${string}`;
+  lastStateHash: `0x${string}`; // Changed from varaStateHash to lastStateHash
 }
 
 // Transaction types

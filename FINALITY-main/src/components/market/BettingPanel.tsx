@@ -20,7 +20,7 @@ export default function BettingPanel({ market }: BettingPanelProps) {
     const [betAmount, setBetAmount] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const { deposit, isLoading } = useDeposit();
+    const { deposit, isLoading, isWrongNetwork, switchChain } = useDeposit();
 
     const amount = parseFloat(betAmount) || 0;
     const odds = selectedOutcome === Outcome.YES ? market.yesOdds : market.noOdds;
@@ -40,6 +40,18 @@ export default function BettingPanel({ market }: BettingPanelProps) {
 
         if (market.status !== 'OPEN') {
             toast.error('This market is not open for betting');
+            return;
+        }
+
+        if (isWrongNetwork) {
+            toast.error('Wrong Network!', {
+                description: 'Please switch to Hoodi Testnet (Chain ID: 560048) in your wallet',
+            });
+            try {
+                await switchChain();
+            } catch (e) {
+                // Switch request sent
+            }
             return;
         }
 

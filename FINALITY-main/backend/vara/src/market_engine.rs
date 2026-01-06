@@ -1,5 +1,5 @@
 use crate::types::*;
-use gstd::{msg, prelude::*, ActorId as GActorId};
+use gstd::{prelude::*, collections::BTreeMap, ActorId as GActorId};
 use parity_scale_codec::{Decode, Encode};
 
 #[derive(Debug, Default, Encode, Decode)]
@@ -90,7 +90,7 @@ impl MarketEngine {
             last_ethereum_block: ethereum_block,
         };
 
-        let state_hash = self.compute_state_hash(&market_state);
+        let state_hash = MarketEngine::compute_state_hash(&market_state);
         self.markets.insert(market_id, market_state);
 
         MarketEngineEvent::MarketInitialized {
@@ -131,7 +131,7 @@ impl MarketEngine {
 
         // Execute AMM swap
         let (tokens_out, new_yes_pool, new_no_pool) = if is_yes {
-            let swap_out = self.get_amount_out(amount_to_pool, market.no_pool, market.yes_pool);
+            let swap_out = MarketEngine::get_amount_out(amount_to_pool, market.no_pool, market.yes_pool);
             let total_out = swap_out + amount;
             (
                 total_out,
@@ -139,7 +139,7 @@ impl MarketEngine {
                 market.no_pool - swap_out,
             )
         } else {
-            let swap_out = self.get_amount_out(amount_to_pool, market.yes_pool, market.no_pool);
+            let swap_out = MarketEngine::get_amount_out(amount_to_pool, market.yes_pool, market.no_pool);
             let total_out = swap_out + amount;
             (
                 total_out,
@@ -152,7 +152,7 @@ impl MarketEngine {
         market.yes_pool = new_yes_pool;
         market.no_pool = new_no_pool;
 
-        let state_hash = self.compute_state_hash(market);
+        let state_hash = MarketEngine::compute_state_hash(market);
 
         MarketEngineEvent::TradeExecuted {
             market_id,
@@ -275,7 +275,7 @@ impl MarketEngine {
             yes_pool: market.yes_pool,
             no_pool: market.no_pool,
             total_orders: market.orders.len() as u64,
-            state_hash: self.compute_state_hash(market),
+            state_hash: MarketEngine::compute_state_hash(market),
         }
     }
 
@@ -296,13 +296,13 @@ impl MarketEngine {
         };
 
         let eth_out = if is_yes {
-            self.get_amount_out(token_amount, market.yes_pool, market.no_pool)
+            MarketEngine::get_amount_out(token_amount, market.yes_pool, market.no_pool)
         } else {
-            self.get_amount_out(token_amount, market.no_pool, market.yes_pool)
+            MarketEngine::get_amount_out(token_amount, market.no_pool, market.yes_pool)
         };
 
         // Calculate fees
-        let total_fee = (eth_out * TOTAL_FEE_BPS) / BPS_DIVISOR;
+        let _total_fee = (eth_out * TOTAL_FEE_BPS) / BPS_DIVISOR;
         let creator_fee = (eth_out * CREATOR_FEE_BPS) / BPS_DIVISOR;
         let platform_fee = (eth_out * PLATFORM_FEE_BPS) / BPS_DIVISOR;
 
@@ -315,7 +315,7 @@ impl MarketEngine {
             market.no_pool -= eth_out;
         }
 
-        let state_hash = self.compute_state_hash(market);
+        let state_hash = MarketEngine::compute_state_hash(market);
 
         MarketEngineEvent::WithdrawalCalculated {
             market_id,
@@ -334,7 +334,7 @@ impl MarketEngine {
                 yes_pool: market.yes_pool,
                 no_pool: market.no_pool,
                 total_orders: market.orders.len() as u64,
-                state_hash: self.compute_state_hash(market),
+                state_hash: MarketEngine::compute_state_hash(market),
             },
             None => MarketEngineEvent::Error {
                 message: "Market not found".to_string(),
@@ -388,14 +388,14 @@ impl MarketEngine {
     }
 
     // AMM formula: x * y = k
-    fn get_amount_out(&self, amount_in: u128, reserve_in: u128, reserve_out: u128) -> u128 {
+    fn get_amount_out(amount_in: u128, reserve_in: u128, reserve_out: u128) -> u128 {
         if amount_in == 0 || reserve_in == 0 || reserve_out == 0 {
             return 0;
         }
         (amount_in * reserve_out) / (reserve_in + amount_in)
     }
 
-    fn compute_state_hash(&self, market: &MarketState) -> Hash {
+    fn compute_state_hash(market: &MarketState) -> Hash {
         // Simple hash computation (in production, use proper cryptographic hash)
         let mut hash = [0u8; 32];
         let yes_bytes = market.yes_pool.to_le_bytes();

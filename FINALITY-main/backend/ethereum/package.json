@@ -3,17 +3,34 @@
     "version": "1.0.0",
     "scripts": {
         "compile": "hardhat compile",
-        "deploy": "hardhat run scripts/deploy.ts --network sepolia",
-        "test": "hardhat test"
+        "deploy": "hardhat run scripts/deploy.ts --network hoodi",
+        "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+        "create-program": "tsx scripts/create-vara-eth-program.ts",
+        "fund-program": "tsx scripts/fund-program.ts",
+        "test": "hardhat test",
+        "test-contract": "hardhat run scripts/test-contract.ts --network hoodi",
+    "test-trading": "hardhat run scripts/test-trading.ts --network hoodi",
+    "check-mirror-status": "tsx scripts/check-mirror-status.ts",
+        "get-address": "ts-node scripts/get-address.ts",
+        "get-faucet": "ts-node scripts/get-faucet-info.ts",
+        "generate-abi": "ts-node scripts/generate-abi.ts",
+        "setup": "tsx scripts/complete-setup.ts",
+        "check-deploy": "tsx scripts/check-and-deploy.ts",
+        "status": "ts-node scripts/status.ts",
+        "auto-deploy": "tsx scripts/auto-deploy.ts",
+        "check-balance": "ts-node scripts/check-balance-wait.ts"
     },
     "devDependencies": {
         "@nomicfoundation/hardhat-toolbox": "^4.0.0",
         "@types/node": "^20.10.5",
         "dotenv": "^16.3.1",
         "hardhat": "^2.28.2",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.21.0",
         "typescript": "^5.3.3"
     },
     "dependencies": {
-        "node": "^24.12.0"
+        "@vara-eth/api": "^0.1.0",
+        "viem": "^2.43.5"
     }
 }

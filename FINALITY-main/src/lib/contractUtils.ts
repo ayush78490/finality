@@ -16,7 +16,7 @@ export function contractMarketToMarket(contractMarket: any, id: string): Market 
     totalBacking: contractMarket[8],
     platformFees: contractMarket[9],
     creatorFees: contractMarket[10],
-    varaStateHash: contractMarket[11],
+    lastStateHash: contractMarket[11], // Changed from varaStateHash to lastStateHash
   } : contractMarket;
   return {
     id,

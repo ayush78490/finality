@@ -3,7 +3,8 @@
 import { useCallback } from 'react';
 import Particles from 'react-tsparticles';
 import { loadSlim } from 'tsparticles-slim';
-import type { Engine } from 'tsparticles-engine';
+// Engine type is available from react-tsparticles
+type Engine = any;
 
 export default function ParticlesBackground() {
     const particlesInit = useCallback(async (engine: Engine) => {

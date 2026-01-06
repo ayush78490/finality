@@ -1,19 +1,28 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import { useAccount } from 'wagmi';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import MarketFilters from '@/components/markets/MarketFilters';
 import MarketCard from '@/components/markets/MarketCard';
 import ParticlesBackground from '@/components/ParticlesBackground';
 import { useAllMarkets } from '@/hooks/useMarkets';
+import Button from '@/components/ui/Button';
 
 // Force dynamic rendering to avoid SSR issues with wagmi
 export const dynamic = 'force-dynamic';
 
 export default function MarketsPage() {
     const { markets, isLoading, error } = useAllMarkets();
+    const { chain } = useAccount();
+    const [refreshKey, setRefreshKey] = useState(0);
+    
+    const handleRefresh = () => {
+        setRefreshKey(prev => prev + 1);
+        window.location.reload();
+    };
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -60,9 +69,29 @@ export default function MarketsPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.2 }}
+                        className="flex justify-between items-center gap-4"
                     >
                         <MarketFilters />
+                        <Button
+                            onClick={handleRefresh}
+                            variant="secondary"
+                            disabled={isLoading}
+                        >
+                            {isLoading ? 'Loading...' : '🔄 Refresh'}
+                        </Button>
                     </motion.div>
+                    
+                    {/* Network Warning */}
+                    {chain && chain.id !== 560048 && (
+                        <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded">
+                            <p className="text-yellow-400 text-sm">
+                                ⚠️ Wrong Network: You're on {chain.name} (Chain ID: {chain.id})
+                            </p>
+                            <p className="text-yellow-300 text-xs mt-1">
+                                Please switch to Hoodi Testnet (Chain ID: 560048) to see markets
+                            </p>
+                        </div>
+                    )}
 
                     {isLoading ? (
                         <div className="flex items-center justify-center min-h-[400px]">
@@ -83,6 +112,34 @@ export default function MarketsPage() {
                             <div className="text-center">
                                 <p className="text-text-secondary text-lg">No markets found</p>
                                 <p className="text-sm text-text-tertiary mt-2">Be the first to create a market!</p>
+                                
+                                {/* Debug Info */}
+                                <div className="mt-4 p-4 bg-gray-500/10 border border-gray-500/20 rounded text-left max-w-md mx-auto">
+                                    <p className="text-gray-300 text-xs mb-2">Debug Info:</p>
+                                    <p className="text-gray-400 text-xs">Network: {chain?.name || 'Not connected'} (Chain ID: {chain?.id || 'N/A'})</p>
+                                    <p className="text-gray-400 text-xs">Contract: {process.env.NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS || 'Not configured'}</p>
+                                    <p className="text-gray-400 text-xs">Required: Hoodi Testnet (560048)</p>
+                                </div>
+                                
+                                {error && (
+                                    <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded">
+                                        <p className="text-red-400 text-sm">Error loading markets</p>
+                                        <p className="text-red-300 text-xs mt-2">
+                                            Make sure you're connected to Hoodi Testnet (Chain ID: 560048)
+                                        </p>
+                                        <p className="text-red-200 text-xs mt-1">
+                                            Check browser console for details
+                                        </p>
+                                    </div>
+                                )}
+                                
+                                <Button
+                                    onClick={handleRefresh}
+                                    variant="primary"
+                                    className="mt-4"
+                                >
+                                    🔄 Refresh Markets
+                                </Button>
                             </div>
                         </div>
                     ) : (

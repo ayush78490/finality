@@ -1,9 +1,12 @@
 'use client';
 
-import { useContractRead, useWriteContract, usePublicClient, useWalletClient, useEnsAddress } from 'wagmi';
+import { useContractRead, useWriteContract, usePublicClient, useWalletClient, useEnsAddress, useAccount, useSwitchChain } from 'wagmi';
 import { mainnet } from 'wagmi/chains';
 import { CONTRACTS, PREDICTION_MARKET_ABI, ContractMarket, CreateMarketParams, DepositParams, WithdrawalParams, ClaimRedemptionParams } from '@/lib/contracts';
 import { useCallback, useMemo } from 'react';
+
+// Hoodi Testnet Chain ID
+const HOODI_CHAIN_ID = 560048;
 
 // Hook to resolve the settlement address (handles ENS)
 export function useSettlementAddress() {
@@ -37,6 +40,7 @@ export function useMarket(marketId: bigint) {
     abi: PREDICTION_MARKET_ABI,
     functionName: 'markets',
     args: [marketId],
+    chainId: HOODI_CHAIN_ID, // Explicitly set Hoodi Testnet
     query: {
       enabled: !!address,
     },
@@ -46,6 +50,8 @@ export function useMarket(marketId: bigint) {
 // Hook for creating markets
 export function useCreateMarket() {
   const { data: walletClient } = useWalletClient();
+  const { chain } = useAccount();
+  const { switchChain } = useSwitchChain();
 
   const { writeContractAsync, isPending, isSuccess, error } = useWriteContract();
   const { address } = useSettlementAddress();
@@ -53,6 +59,20 @@ export function useCreateMarket() {
   const createMarket = useCallback(async (params: CreateMarketParams) => {
     if (!walletClient) throw new Error('Wallet not connected');
     if (!address) throw new Error('Contract address not resolved');
+
+    // Check if user is on the correct network
+    if (chain?.id !== HOODI_CHAIN_ID) {
+      // Try to switch to Hoodi Testnet
+      try {
+        await switchChain({ chainId: HOODI_CHAIN_ID });
+        throw new Error('Please switch to Hoodi Testnet. The network switch request has been sent to your wallet.');
+      } catch (switchError: any) {
+        if (switchError.message?.includes('switch')) {
+          throw switchError;
+        }
+        throw new Error(`Wrong network! Please switch to Hoodi Testnet (Chain ID: ${HOODI_CHAIN_ID}) in your wallet. Current network: ${chain?.name || 'Unknown'} (Chain ID: ${chain?.id || 'Unknown'})`);
+      }
+    }
 
     const value = (params.initialYes + params.initialNo);
 
@@ -69,24 +89,46 @@ export function useCreateMarket() {
       ],
       value,
       gas: 5000000n, // Set reasonable gas limit to avoid exceeding network cap
+      chainId: HOODI_CHAIN_ID, // Explicitly set chain ID
     });
-  }, [writeContractAsync, walletClient]);
+  }, [writeContractAsync, walletClient, chain, switchChain, address]);
 
   return {
     createMarket,
     isLoading: isPending,
     isSuccess,
     error,
+    isWrongNetwork: chain?.id !== HOODI_CHAIN_ID,
   };
 }
 
 // depositing (trading)
 export function useDeposit() {
+  const { data: walletClient } = useWalletClient();
+  const { chain } = useAccount();
+  const { switchChain } = useSwitchChain();
   const { writeContractAsync, isPending, isSuccess, error } = useWriteContract();
   const { address } = useSettlementAddress();
 
+  const isWrongNetwork = useMemo(() => chain?.id !== HOODI_CHAIN_ID, [chain]);
+
   const deposit = useCallback(async (params: DepositParams) => {
+    if (!walletClient) throw new Error('Wallet not connected');
     if (!address) throw new Error('Contract address not resolved');
+
+    // Check if user is on the correct network
+    if (isWrongNetwork) {
+      // Try to switch to Hoodi Testnet
+      try {
+        await switchChain({ chainId: HOODI_CHAIN_ID });
+        throw new Error('Please switch to Hoodi Testnet. The network switch request has been sent to your wallet.');
+      } catch (switchError: any) {
+        if (switchError.message?.includes('switch')) {
+          throw switchError;
+        }
+        throw new Error(`Wrong network! Please switch to Hoodi Testnet (Chain ID: ${HOODI_CHAIN_ID}) in your wallet. Current network: ${chain?.name || 'Unknown'} (Chain ID: ${chain?.id || 'Unknown'})`);
+      }
+    }
 
     return writeContractAsync({
       address,
@@ -94,15 +136,18 @@ export function useDeposit() {
       functionName: 'deposit',
       args: [params.marketId, params.isYes],
       value: params.amount,
-      gas: 3000000n,
+      gas: 5000000n, // Increased gas limit for Mirror call
+      chainId: HOODI_CHAIN_ID, // Explicitly set chain ID
     });
-  }, [writeContractAsync, address]);
+  }, [writeContractAsync, walletClient, address, chain, isWrongNetwork, switchChain]);
 
   return {
     deposit,
     isLoading: isPending,
     isSuccess,
     error,
+    isWrongNetwork,
+    switchChain: () => switchChain({ chainId: HOODI_CHAIN_ID }),
   };
 }
 
@@ -189,6 +234,7 @@ export function useContractInfo() {
     address,
     abi: PREDICTION_MARKET_ABI,
     functionName: 'nextMarketId',
+    chainId: HOODI_CHAIN_ID, // Explicitly set Hoodi Testnet
     query: {
       enabled: !!address,
     },
@@ -198,15 +244,17 @@ export function useContractInfo() {
     address,
     abi: PREDICTION_MARKET_ABI,
     functionName: 'owner',
+    chainId: HOODI_CHAIN_ID, // Explicitly set Hoodi Testnet
     query: {
       enabled: !!address,
     },
   });
 
-  const relayer = useContractRead({
+  const marketEngineMirror = useContractRead({
     address,
     abi: PREDICTION_MARKET_ABI,
-    functionName: 'relayer',
+    functionName: 'marketEngineMirror',
+    chainId: HOODI_CHAIN_ID, // Explicitly set Hoodi Testnet
     query: {
       enabled: !!address,
     },
@@ -215,6 +263,6 @@ export function useContractInfo() {
   return {
     nextMarketId: nextMarketId.data,
     owner: owner.data,
-    relayer: relayer.data,
+    marketEngineMirror: marketEngineMirror.data,
   };
 }

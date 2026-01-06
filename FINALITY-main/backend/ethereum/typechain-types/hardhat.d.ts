@@ -21,6 +21,14 @@ declare module "hardhat/types/runtime" {
       name: "PredictionMarketSettlement",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.PredictionMarketSettlement__factory>;
+    getContractFactory(
+      name: "IVaraEthMirror",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IVaraEthMirror__factory>;
+    getContractFactory(
+      name: "PredictionMarketSettlementVaraEth",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.PredictionMarketSettlementVaraEth__factory>;
 
     getContractAt(
       name: "OutcomeToken",
@@ -32,6 +40,16 @@ declare module "hardhat/types/runtime" {
       address: string | ethers.Addressable,
       signer?: ethers.Signer
     ): Promise<Contracts.PredictionMarketSettlement>;
+    getContractAt(
+      name: "IVaraEthMirror",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IVaraEthMirror>;
+    getContractAt(
+      name: "PredictionMarketSettlementVaraEth",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.PredictionMarketSettlementVaraEth>;
 
     deployContract(
       name: "OutcomeToken",
@@ -41,6 +59,14 @@ declare module "hardhat/types/runtime" {
       name: "PredictionMarketSettlement",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PredictionMarketSettlement>;
+    deployContract(
+      name: "IVaraEthMirror",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IVaraEthMirror>;
+    deployContract(
+      name: "PredictionMarketSettlementVaraEth",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PredictionMarketSettlementVaraEth>;
 
     deployContract(
       name: "OutcomeToken",
@@ -52,6 +78,16 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.PredictionMarketSettlement>;
+    deployContract(
+      name: "IVaraEthMirror",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IVaraEthMirror>;
+    deployContract(
+      name: "PredictionMarketSettlementVaraEth",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.PredictionMarketSettlementVaraEth>;
 
     // default types
     getContractFactory(

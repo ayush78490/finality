@@ -14,10 +14,19 @@ export function useMarketCount() {
         address,
         abi: PREDICTION_MARKET_ABI,
         functionName: 'nextMarketId',
+        chainId: 560048, // Explicitly set Hoodi Testnet
         query: {
             enabled: !!address,
+            retry: 3,
         },
     });
+
+    // Debug logging
+    if (error) {
+        console.error('Error fetching market count:', error);
+        console.error('Contract address:', address);
+        console.error('Chain ID: 560048');
+    }
 
     return {
         count: data ? Number(data) : 0,
@@ -41,12 +50,24 @@ export function useAllMarkets() {
             abi: PREDICTION_MARKET_ABI,
             functionName: 'markets',
             args: [BigInt(i)],
+            chainId: 560048, // Explicitly set Hoodi Testnet
         }));
     }, [count, address]);
 
     const { data: marketsData, isLoading: marketsLoading, error } = useReadContracts({
         contracts,
     });
+
+    // Debug logging
+    if (error) {
+        console.error('Error fetching markets:', error);
+        console.error('Contract address:', address);
+        console.error('Market count:', count);
+    }
+    if (marketsData) {
+        console.log('Markets data received:', marketsData.length, 'results');
+        console.log('Success count:', marketsData.filter(r => r.status === 'success').length);
+    }
 
     // Transform contract data to Market type
     const markets = useMemo(() => {
@@ -69,7 +90,7 @@ export function useAllMarkets() {
                     totalBacking,
                     platformFees,
                     creatorFees,
-                    varaStateHash,
+                    lastStateHash, // Changed from varaStateHash to lastStateHash
                 ] = result.result as unknown as readonly [
                     `0x${string}`,
                     string,
@@ -163,6 +184,7 @@ export function useMarket(marketId: number) {
         abi: PREDICTION_MARKET_ABI,
         functionName: 'markets',
         args: [BigInt(marketId)],
+        chainId: 560048, // Explicitly set Hoodi Testnet
         query: {
             enabled: !!address,
         },
@@ -184,7 +206,7 @@ export function useMarket(marketId: number) {
             totalBacking,
             platformFees,
             creatorFees,
-            varaStateHash,
+            lastStateHash, // Changed from varaStateHash to lastStateHash
         ] = data as unknown as readonly [
             `0x${string}`,
             string,

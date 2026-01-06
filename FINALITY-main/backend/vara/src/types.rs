@@ -1,5 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use gstd::prelude::*;
 
 pub type MarketId = u64;
 pub type ActorId = [u8; 32];

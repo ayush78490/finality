@@ -1,7 +1,7 @@
 #![no_std]
 
 use gstd::{msg, prelude::*, ActorId};
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Decode;
 
 mod market_engine;
 mod trading_bot;

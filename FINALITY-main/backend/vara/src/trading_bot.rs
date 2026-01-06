@@ -1,5 +1,5 @@
 use crate::types::*;
-use gstd::{msg, prelude::*, ActorId as GActorId};
+use gstd::{prelude::*, collections::BTreeMap, ActorId as GActorId};
 use parity_scale_codec::{Decode, Encode};
 
 #[derive(Debug, Default, Encode, Decode)]
@@ -56,7 +56,7 @@ impl TradingBot {
         market_id: MarketId,
         is_yes: bool,
         amount: u128,
-        beneficiary: ActorId,
+        _beneficiary: ActorId,
     ) -> TradingBotEvent {
         // In production, this would send a message to the market engine
         // and wait for the response
@@ -68,7 +68,7 @@ impl TradingBot {
         }
     }
 
-    fn batch_check_orders(&self, order_ids: Vec<u64>) -> TradingBotEvent {
+    fn batch_check_orders(&self, _order_ids: Vec<u64>) -> TradingBotEvent {
         // In production, this would check each order against current prices
         let triggered_orders = Vec::new(); // Placeholder
 

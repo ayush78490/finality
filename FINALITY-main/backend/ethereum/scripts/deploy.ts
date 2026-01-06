@@ -1,43 +1,78 @@
 import { ethers } from 'hardhat';
+import dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
+
+dotenv.config();
 
 async function main() {
-    console.log('Deploying PredictionMarketSettlement to Sepolia...');
+    const network = process.env.HARDHAT_NETWORK || 'hoodi';
+    console.log(`Deploying PredictionMarketSettlementVaraEth to ${network}...`);
 
     const [deployer] = await ethers.getSigners();
     console.log('Deploying with account:', deployer.address);
-    console.log('Account balance:', (await deployer.provider.getBalance(deployer.address)).toString());
+    
+    const balance = await deployer.provider.getBalance(deployer.address);
+    console.log('Account balance:', ethers.formatEther(balance), 'ETH');
 
-    // Get relayer address from environment or use deployer
-    const relayerAddress = process.env.RELAYER_ADDRESS || deployer.address;
-    console.log('Relayer address:', relayerAddress);
+    // Get Mirror address from environment
+    const mirrorAddress = process.env.MARKET_ENGINE_MIRROR_ADDRESS;
+    if (!mirrorAddress) {
+        throw new Error(
+            "MARKET_ENGINE_MIRROR_ADDRESS not set in .env\n" +
+            "Run 'npm run create-program' first to create the Vara.eth program"
+        );
+    }
 
-    // Deploy OutcomeToken library (if needed)
+    console.log('Market Engine Mirror:', mirrorAddress);
     console.log('\nDeploying contracts...');
 
-    // Deploy PredictionMarketSettlement
-    const PredictionMarketSettlement = await ethers.getContractFactory('PredictionMarketSettlement');
-    const settlement = await PredictionMarketSettlement.deploy(relayerAddress);
+    // Deploy PredictionMarketSettlementVaraEth
+    const PredictionMarketSettlement = await ethers.getContractFactory('PredictionMarketSettlementVaraEth');
+    const settlement = await PredictionMarketSettlement.deploy(mirrorAddress);
     await settlement.waitForDeployment();
 
     const settlementAddress = await settlement.getAddress();
-    console.log('PredictionMarketSettlement deployed to:', settlementAddress);
+    console.log('\n✅ === Deployment Complete ===');
+    console.log('PredictionMarketSettlementVaraEth deployed to:', settlementAddress);
 
     // Save deployment info
     const deploymentInfo = {
-        network: 'sepolia',
+        network: network,
         settlementContract: settlementAddress,
-        relayer: relayerAddress,
+        marketEngineMirror: mirrorAddress,
         deployer: deployer.address,
         timestamp: new Date().toISOString(),
     };
 
-    console.log('\n=== Deployment Complete ===');
+    console.log('\n📝 Deployment Information:');
     console.log(JSON.stringify(deploymentInfo, null, 2));
-    console.log('\nSave this information for your relayer configuration!');
-    console.log('\nNext steps:');
-    console.log('1. Deploy Vara program');
-    console.log('2. Update relayer .env with these addresses');
-    console.log('3. Start the relayer service');
+    
+    // Save to .env file
+    const envPath = path.join(__dirname, '../.env');
+    let envContent = '';
+    if (fs.existsSync(envPath)) {
+        envContent = fs.readFileSync(envPath, 'utf-8');
+        // Remove existing SETTLEMENT_CONTRACT_ADDRESS if present
+        envContent = envContent.replace(/^SETTLEMENT_CONTRACT_ADDRESS=.*$/m, '');
+    }
+    // Add the new SETTLEMENT_CONTRACT_ADDRESS
+    envContent += `SETTLEMENT_CONTRACT_ADDRESS=${settlementAddress}\n`;
+    fs.writeFileSync(envPath, envContent);
+    
+    console.log('\n✅ Saved to .env file automatically');
+    console.log('\n📝 Also update frontend .env with:');
+    console.log(`NEXT_PUBLIC_SETTLEMENT_CONTRACT_ADDRESS=${settlementAddress}`);
+    
+    console.log('\n🔗 View on explorer:');
+    if (network === 'hoodi') {
+        console.log(`https://explorer.hoodi.io/address/${settlementAddress}`);
+    }
+    
+    console.log('\n⏭️  Next steps:');
+    console.log('1. Update frontend .env with SETTLEMENT_CONTRACT_ADDRESS');
+    console.log('2. Test market creation');
+    console.log('3. Test trading functionality');
 }
 
 main()

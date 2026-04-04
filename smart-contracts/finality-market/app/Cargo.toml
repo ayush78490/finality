@@ -1,0 +1,12 @@
+[package]
+name = "finality-market-app"
+version.workspace = true
+edition.workspace = true
+description = "Finality prediction market — oracle ticks + 5m rounds + AMM reserves (Vara / Gear Sails)"
+
+[dependencies]
+sails-rs.workspace = true
+gstd = "1.10.0"
+spin = { version = "0.9", default-features = false, features = ["mutex"] }
+parity-scale-codec = { version = "3.7", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["derive"] }

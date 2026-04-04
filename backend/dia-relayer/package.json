@@ -1,0 +1,28 @@
+{
+  "name": "@finality/dia-relayer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "bootstrap": "tsx src/bootstrap.ts",
+    "emergency-init": "tsx src/emergency-init.ts",
+    "start-rounds": "tsx src/start-rounds.ts",
+    "settle-expired": "tsx src/settle-expired.ts",
+    "round-manager": "tsx src/round-manager.ts",
+    "verify-market": "tsx src/verify-market.ts",
+    "verify-faucet": "tsx src/verify-faucet.ts"
+  },
+  "dependencies": {
+    "@gear-js/api": "latest",
+    "@polkadot/keyring": "latest",
+    "@polkadot/util-crypto": "latest",
+    "dotenv": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

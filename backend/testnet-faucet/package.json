@@ -1,0 +1,25 @@
+{
+  "name": "@finality/testnet-faucet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@gear-js/api": "latest",
+    "@polkadot/keyring": "latest",
+    "@polkadot/util-crypto": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "express-rate-limit": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/cors": "latest",
+    "@types/express": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

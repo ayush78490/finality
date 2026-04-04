@@ -1,0 +1,6 @@
+{
+  "varaTestnet": {
+    "marketProgramId": "0x591d0ba0f195b24f065347e7b666502680c447258b1fc78dc3667df6047b1a95",
+    "remarks": "Finality market (Gear program). Update if you redeploy; point dia-relayer and NEXT_PUBLIC_MARKET_PROGRAM_ID here."
+  }
+}

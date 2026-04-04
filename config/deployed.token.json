@@ -1,0 +1,6 @@
+{
+  "varaTestnet": {
+    "finTokenProgramId": "0x5e5e6163bc512f3f552fad1382517695e2413c2a9583d85cf719dcd3807c103a",
+    "remarks": "Update if you redeploy FIN. Used by faucet and docs."
+  }
+}

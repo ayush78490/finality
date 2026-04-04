@@ -1,0 +1,67 @@
+# Environment & secrets (keep *.example committed)
+.env
+.env*.local
+!.env.example
+!**/.env.example
+
+# Dependencies
+**/node_modules/
+
+# Next.js / frontend
+apps/web/.next/
+apps/web/out/
+apps/web/.vercel
+.next/
+out/
+
+# Build / tooling caches
+dist/
+build/
+.turbo/
+.cache/
+*.tsbuildinfo
+.eslintcache
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE (optional — uncomment if you do not commit editor settings)
+# .vscode/
+.idea/
+
+# Rust / Cargo (default artifact dir)
+**/target/
+
+# Gear / wasm build outputs (not always under `target/`)
+**/artifacts/
+**/target-build/
+**/target-build*/
+**/target-sails-idl/
+
+# Scratch / nested clones
+_tmp_finalityoracle/
+
+# Local Cargo target dirs (Windows: optional isolated builds to avoid AV file locks)
+programs/finality-market/target-clean/
+programs/finality-market/target-idl/
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules
+node_modules

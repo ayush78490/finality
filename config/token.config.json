@@ -1,0 +1,36 @@
+{
+  "network": "vara-testnet",
+  "token": {
+    "name": "Finality Token",
+    "symbol": "FIN",
+    "decimals": 12,
+    "tokenId": "1",
+    "maxSupplyWholeTokens": "100000000",
+    "maxSupplyBaseUnits": "100000000000000000000",
+    "mintable": true,
+    "governanceEnabled": false
+  },
+  "initialDistribution": {
+    "treasuryPercent": 40,
+    "liquidityBootstrapPercent": 40,
+    "rewardsPercent": 20
+  },
+  "markets": {
+    "roundSeconds": 300,
+    "adminOnlyCreation": true,
+    "pricingModel": "amm"
+  },
+  "oracle": {
+    "provider": "dia",
+    "feeds": [
+      "BTC",
+      "ETH",
+      "SOL",
+      "BNB",
+      "AVAX",
+      "TON",
+      "HYPE"
+    ],
+    "resolutionRule": "end_price_gte_start_price_means_up"
+  }
+}

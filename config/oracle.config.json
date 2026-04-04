@@ -1,0 +1,48 @@
+{
+  "diaBaseUrl": "https://api.diadata.org",
+  "marketProgramId": "0x591d0ba0f195b24f065347e7b666502680c447258b1fc78dc3667df6047b1a95",
+  "pollIntervalMs": 5000,
+  "maxPriceAgeSeconds": 120,
+  "feeds": [
+    {
+      "symbol": "BTC/USD",
+      "diaSymbol": "BTC",
+      "assetId": 0
+    },
+    {
+      "symbol": "ETH/USD",
+      "diaSymbol": "ETH",
+      "assetId": 1
+    },
+    {
+      "symbol": "SOL/USD",
+      "diaSymbol": "SOL",
+      "assetId": 2
+    },
+    {
+      "symbol": "BNB/USD",
+      "diaSymbol": "BNB",
+      "assetId": 3
+    },
+    {
+      "symbol": "AVAX/USD",
+      "diaSymbol": "AVAX",
+      "assetId": 4
+    },
+    {
+      "symbol": "TON/USD",
+      "diaSymbol": "TON",
+      "assetId": 5
+    },
+    {
+      "symbol": "HYPE/USD",
+      "diaSymbol": "HYPE",
+      "assetId": 6
+    }
+  ],
+  "notes": [
+    "Embedded oracle: admin calls `Oracle.add_asset` (e.g. symbol BTC, 8 decimals) to get sequential asset ids; `Fin.register_asset` links market symbol (e.g. BTC/USD) to that assetId.",
+    "Round manager uses Binance → `Oracle.submit_round` before settle/start; RELAYER_MNEMONIC must match `Fin.init` oracle_authority.",
+    "Legacy DIA polling (`npm start`) is off unless ORACLE_ENABLE_PUSH=true; diaBaseUrl is only used for that path."
+  ]
+}

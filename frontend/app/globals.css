@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fallbacks if the Tailwind pipeline fails (dev cache, misconfigured PostCSS). */
+:root {
+  color-scheme: dark;
+  --ink: #0b0f14;
+  --mist: #8da3b8;
+  --ember: #e8a04c;
+  --panel: #121922;
+  --line: #1e2a36;
+}
+
+html {
+  background-color: var(--ink);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--ink);
+  color: var(--mist);
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background-image:
+    radial-gradient(1200px 600px at 10% -10%, rgba(232, 160, 76, 0.12), transparent),
+    radial-gradient(900px 500px at 90% 0%, rgba(76, 201, 176, 0.08), transparent);
+}
+
+a {
+  color: var(--ember);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  border-bottom: 1px solid rgba(30, 42, 54, 0.65);
+  background: rgba(11, 15, 20, 0.88);
+  backdrop-filter: blur(10px);
+}
+
+/* Card panels: plain CSS so they still look like cards if utility classes fail to load. */
+.glass {
+  background-color: rgba(18, 25, 34, 0.88);
+  border: 1px solid rgba(30, 42, 54, 0.85);
+  border-radius: 1rem;
+  box-shadow: 0 24px 80px -48px rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(12px);
+}

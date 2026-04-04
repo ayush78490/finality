@@ -1,0 +1,372 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import type { MarketRoundDetail } from "@/lib/fin-get-round";
+import type { MarketMeta } from "@/lib/markets";
+import { previewBuySide, finBaseToShortHuman } from "@/lib/amm-trade-preview";
+import { finHumanToBaseUnits } from "@/lib/trade-submit";
+import { submitBuySide } from "@/lib/trade-submit";
+import { useWallet } from "@/lib/wallet";
+import { MARKET_PROGRAM_ID } from "@/lib/config";
+
+function tryFinHumanToBase(s: string): bigint | null {
+  try {
+    return finHumanToBaseUnits(s.trim() || "0");
+  } catch {
+    return null;
+  }
+}
+
+function formatFinUpTo3(value: number): string {
+  return value.toLocaleString(undefined, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 3,
+  });
+}
+
+type PoolOdds = {
+  upPct: number;
+  downPct: number;
+  upFin: number;
+  downFin: number;
+  totalFin: number;
+  multUp: number;
+  multDown: number;
+};
+
+type Props = {
+  market: MarketMeta;
+  roundDetail: MarketRoundDetail | null;
+  userPosition: { sharesUp: bigint; sharesDown: bigint } | null;
+  viewMode: "live" | "history";
+  onBuySuccess?: () => void | Promise<void>;
+  refreshFinBalance: () => Promise<string | null>;
+};
+
+const FIN_DEC = 1_000_000_000_000;
+
+export function TradePanel({
+  market,
+  roundDetail,
+  userPosition,
+  viewMode,
+  onBuySuccess,
+  refreshFinBalance,
+}: Props) {
+  const { account, api } = useWallet();
+  const [side, setSide] = useState<"up" | "down">("up");
+  const [finAmount, setFinAmount] = useState("1");
+  const [txPending, setTxPending] = useState(false);
+  const [txError, setTxError] = useState<string | null>(null);
+  const [txOk, setTxOk] = useState<string | null>(null);
+
+  const poolOdds = useMemo((): PoolOdds | null => {
+    if (roundDetail?.kind !== "round") return null;
+    const { reserveUp, reserveDown, seedPerSide } = roundDetail;
+    const total = reserveUp + reserveDown;
+    if (total === 0n) return null;
+    const upPct = Math.round(Number(reserveUp * 10000n / total) / 100);
+    const downPct = 100 - upPct;
+    const upFin = Number(reserveUp) / FIN_DEC;
+    const downFin = Number(reserveDown) / FIN_DEC;
+    const totalFin = Number(total) / FIN_DEC;
+    const multUp = upFin > 0 ? totalFin / upFin : 0;
+    const multDown = downFin > 0 ? totalFin / downFin : 0;
+    return { upPct, downPct, upFin, downFin, totalFin, multUp, multDown };
+  }, [roundDetail]);
+
+  const isStaleRound = useMemo(() => {
+    if (roundDetail?.kind !== "round" || roundDetail.phase !== "Open") return false;
+    const roundEndedAgo = Date.now() - roundDetail.endTs;
+    return roundEndedAgo > 300000;
+  }, [roundDetail]);
+
+  const awaitingSettlement = useMemo(() => {
+    if (roundDetail?.kind !== "round" || roundDetail.phase !== "Open") return false;
+    // If round is stale (ended more than 5 min ago), treat as not awaiting
+    if (isStaleRound) return false;
+    return Date.now() >= roundDetail.endTs;
+  }, [roundDetail, isStaleRound]);
+
+  const canTrade = useMemo(() => {
+    if (roundDetail?.kind !== "round") return false;
+    if (roundDetail.phase !== "Open") return false;
+    // Allow trading if round is stale (will use wall clock timer)
+    if (isStaleRound) return true;
+    // Otherwise only allow if round hasn't ended
+    return Date.now() < roundDetail.endTs;
+  }, [roundDetail, isStaleRound]);
+
+  const tradePreview = useMemo(() => {
+    if (!canTrade) return null;
+    const base = tryFinHumanToBase(finAmount);
+    if (base === null || base <= 0n) return null;
+    return previewBuySide({
+      side,
+      finInBase: base,
+      feeBps: roundDetail.feeBps ?? 100,
+      reserveUp: roundDetail.reserveUp,
+      reserveDown: roundDetail.reserveDown,
+      totalSharesUp: roundDetail.totalSharesUp,
+      totalSharesDown: roundDetail.totalSharesDown,
+      userSharesUp: userPosition?.sharesUp ?? 0n,
+      userSharesDown: userPosition?.sharesDown ?? 0n,
+      seedPerSide: roundDetail.seedPerSide ?? 0n,
+    });
+  }, [roundDetail, side, finAmount, userPosition, canTrade]);
+
+  const onChainStatusLabel = useMemo(() => {
+    if (roundDetail?.kind !== "round") return "No active round";
+    const r = roundDetail;
+    if (r.phase === "Resolved" && r.outcomeUp !== null) {
+      return r.outcomeUp ? "UP Won" : "DOWN Won";
+    }
+    if (r.phase === "Locked") return "Settling...";
+    if (r.phase === "Open") {
+      if (Date.now() >= r.endTs) return "Ended";
+      return "Open";
+    }
+    return r.phase;
+  }, [roundDetail]);
+
+  const onBuy = useCallback(async () => {
+    setTxError(null);
+    setTxOk(null);
+    if (!api || !account) {
+      setTxError("Connect wallet first");
+      return;
+    }
+    if (!MARKET_PROGRAM_ID) {
+      setTxError("Market program not configured");
+      return;
+    }
+    if (!canTrade) {
+      setTxError("Trading not available");
+      return;
+    }
+    const amount = tryFinHumanToBase(finAmount);
+    if (!amount || amount <= 0n) {
+      setTxError("Enter a valid amount");
+      return;
+    }
+    setTxPending(true);
+    try {
+      await submitBuySide({
+        api,
+        account,
+        assetKey: market.assetKey,
+        side,
+        finHuman: finAmount,
+        minSharesOut: 1n,
+        roundId: roundDetail?.kind === "round" ? roundDetail.id : undefined,
+      });
+      setTxOk(`${finAmount} FIN committed ${side.toUpperCase()}`);
+      await new Promise((r) => setTimeout(r, 3000));
+      await refreshFinBalance();
+      onBuySuccess?.();
+    } catch (e: unknown) {
+      setTxError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTxPending(false);
+    }
+  }, [api, account, finAmount, market.assetKey, refreshFinBalance, side, onBuySuccess, roundDetail]);
+
+  const buyDisabled =
+    !account ||
+    !api ||
+    !MARKET_PROGRAM_ID ||
+    txPending ||
+    viewMode === "history" ||
+    !canTrade;
+
+  const toWinByOdds = useMemo(() => {
+    if (tradePreview) {
+      const claim = Number(finBaseToShortHuman(tradePreview.marginalClaimFromThisBuy));
+      if (!Number.isFinite(claim)) return null;
+      return formatFinUpTo3(claim);
+    }
+    const amount = Number.parseFloat(finAmount || "0");
+    if (!Number.isFinite(amount) || amount <= 0 || !poolOdds) return null;
+    const mult = side === "up" ? poolOdds.multUp : poolOdds.multDown;
+    if (!Number.isFinite(mult) || mult <= 0) return null;
+    return formatFinUpTo3(amount * mult);
+  }, [tradePreview, finAmount, poolOdds, side]);
+
+  return (
+    <div className="rounded-2xl sm:rounded-3xl border border-[#1f3142] bg-[linear-gradient(180deg,#111b26_0%,#0f1822_100%)] p-3 sm:p-4 md:p-5">
+      <div className="mb-4 flex items-center justify-between border-b border-[#243547] pb-3">
+        <div className="flex items-center gap-3 sm:gap-4 text-lg sm:text-xl font-semibold">
+          <button className="border-b-2 border-white pb-1 text-white">Buy</button>
+          <button className="pb-1 text-[#7f93a7]">Sell</button>
+        </div>
+        <button className="flex items-center gap-1 text-base sm:text-lg font-semibold text-[#d7e2ec]">
+          Market
+          <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none">
+            <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
+
+      {viewMode === "history" && (
+        <div className="text-xs text-[#e1775e] bg-[#2a1a15] px-3 py-2 rounded-lg mb-3">
+          Switch to live to trade
+        </div>
+      )}
+
+      <div className="bg-[#0d1219] rounded-xl px-3 py-2 mb-4">
+        <div className="text-[10px] text-[#6f8296]">Status</div>
+        <div className="text-sm font-semibold text-white">{onChainStatusLabel}</div>
+        {roundDetail?.kind === "round" && userPosition && (
+          <div className="text-[10px] text-[#6f8296] mt-1 font-mono">
+            UP: {userPosition.sharesUp.toString()} · DOWN: {userPosition.sharesDown.toString()}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 sm:mb-5 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setSide("up")}
+          className={`rounded-xl py-2.5 sm:py-3 text-lg sm:text-xl font-semibold transition ${
+            side === "up"
+              ? "border border-[#3aa062]/50 bg-[#3aa062] text-[#ddf7e8]"
+              : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
+          }`}
+        >
+          <div>Up {poolOdds ? `${poolOdds.upPct}%` : "--"}</div>
+          {poolOdds && (
+            <div className="mt-0.5 text-[11px] font-normal opacity-80">{poolOdds.upFin.toFixed(2)} FIN</div>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setSide("down")}
+          className={`rounded-xl py-2.5 sm:py-3 text-lg sm:text-xl font-semibold transition ${
+            side === "down"
+              ? "border border-[#d83a3f]/50 bg-[#d42f34] text-[#ffe1e3]"
+              : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
+          }`}
+        >
+          <div>Down {poolOdds ? `${poolOdds.downPct}%` : "--"}</div>
+          {poolOdds && (
+            <div className="mt-0.5 text-[11px] font-normal opacity-80">{poolOdds.downFin.toFixed(2)} FIN</div>
+          )}
+        </button>
+      </div>
+
+      {poolOdds && (
+        <div className="bg-[#0d1219] rounded-xl px-3 py-2 mb-4 text-[11px]">
+          <div className="flex justify-between text-[#6f8296]">
+            <span>Pool</span>
+            <span className="font-mono text-[#8fa4b7]">{poolOdds.totalFin.toFixed(2)} FIN</span>
+          </div>
+          <div className="h-1.5 mt-2 rounded-full bg-[#1a1515] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[#39d27d] to-[#39d27d]/70 transition-all"
+              style={{ width: `${poolOdds.upPct}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1 font-mono text-[10px]">
+            <span className="text-[#39d27d]">UP {poolOdds.upFin.toFixed(2)}</span>
+            <span className="text-[#f87171]">DOWN {poolOdds.downFin.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4">
+        <div className="flex items-end justify-between">
+          <div className="text-lg sm:text-xl font-semibold text-[#d8e2ec]">Amount</div>
+          <div className="font-mono text-3xl sm:text-4xl md:text-5xl font-bold text-[#dce7f2]">
+            $<input
+              type="number"
+              inputMode="decimal"
+              placeholder="0"
+              className="w-20 sm:w-24 bg-transparent text-inherit font-inherit font-bold outline-none placeholder:text-[#5a6a7a] placeholder:font-mono placeholder:text-3xl sm:placeholder:text-4xl md:placeholder:text-5xl"
+              value={finAmount}
+              onChange={(e) => setFinAmount(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 sm:mt-4 grid grid-cols-4 sm:grid-cols-6 gap-2">
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 1).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$1</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 5).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$5</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 10).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$10</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 100).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$100</button>
+          <button type="button" onClick={() => setFinAmount("1")} className="hidden sm:block rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">$1</button>
+          <button type="button" onClick={() => setFinAmount("10")} className="hidden sm:block rounded-xl bg-[#2a3948] py-2 text-sm sm:text-base font-semibold text-white">Max</button>
+        </div>
+      </div>
+
+      {viewMode === "live" && tradePreview && roundDetail?.kind === "round" && (
+        <div className="bg-[#1a2636] rounded-xl px-3 py-3 mb-4 text-xs">
+          <div className="text-[10px] font-semibold text-[#6f8296] mb-2">Preview</div>
+          <div className="space-y-1.5 text-[#8fa4b7]">
+            <div className="flex justify-between">
+              <span>Odds</span>
+              <span className="font-mono text-white">
+                {(tradePreview.sidePoolShareAfter * 100).toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span>Win ×</span>
+              <span className="font-mono text-white">×{tradePreview.impliedMult.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Shares</span>
+              <span className="font-mono text-[#8fa4b7]">
+                {finBaseToShortHuman(tradePreview.sharesOut)}
+              </span>
+            </div>
+            <div className="flex justify-between border-t border-[#1e2a36] pt-1.5">
+              <span className="text-[#39d27d]">If wins</span>
+              <span className="font-mono text-[#39d27d]">
+                ~{finBaseToShortHuman(tradePreview.expectedClaimFinIfWin)} FIN
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-4 border-t border-[#1f2f3f] pt-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-lg sm:text-xl font-semibold text-[#d8e2ec]">To win</div>
+            <div className="mt-1 text-xs sm:text-sm text-[#93a5b7]">
+              Avg. Price {side === "up" ? `${poolOdds?.upPct ?? "--"}%` : `${poolOdds?.downPct ?? "--"}%`}
+            </div>
+          </div>
+          <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-right font-mono text-2xl sm:text-3xl md:text-4xl font-bold text-[#3bc777]">
+            {toWinByOdds ? `${toWinByOdds} FIN` : "--"}
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled={buyDisabled}
+        onClick={onBuy}
+        className="w-full rounded-xl sm:rounded-2xl bg-[#1a8de2] px-3 sm:px-4 py-2.5 sm:py-3 text-base sm:text-lg font-semibold text-white transition hover:bg-[#2a9aea] disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {txPending
+          ? "Signing..."
+          : !account
+          ? "Connect Wallet"
+          : viewMode === "history"
+          ? "Viewing History"
+          : awaitingSettlement
+          ? "Round Ended"
+          : canTrade
+          ? `Buy ${side === "up" ? "UP" : "DOWN"}`
+          : "Trading Closed"}
+      </button>
+
+      {txError && <div className="mt-2 text-xs text-[#f87171]">{txError}</div>}
+      {txOk && (
+        <div className="mt-2 text-xs text-[#39d27d] bg-[#1a2a1e] px-3 py-2 rounded-lg">
+          {txOk}
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,8 @@
+// Source of truth: `programs/finality-market/artifacts/finality-market-app.idl` (regenerate with `cargo sails idl` from `programs/finality-market/wasm`).
+// Embedded oracle: `Oracle.add_asset` / `Oracle.submit_round`; market: `Fin.register_asset(asset_key, asset_id)`, `Fin.start_round`, etc.
+
+constructor {
+  Create : ();
+};
+
+// See artifacts IDL for full `Fin` + `Oracle` services.

@@ -1,0 +1,15 @@
+[package]
+name = "finality-market"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+finality-market-app = { path = "../app" }
+sails-rs.workspace = true
+
+[build-dependencies]
+finality-market-app = { path = "../app" }
+sails-rs = { workspace = true, features = ["build", "wasm-builder", "gstd"] }

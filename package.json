@@ -1,0 +1,37 @@
+{
+  "name": "finality-vara-market",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "idl:market": "cargo sails idl --manifest-path smart-contracts/finality-market/wasm/Cargo.toml",
+    "check:gear-idea-idl": "tsx backend/scripts/check-gear-idea-idl.ts",
+    "deploy:fin": "tsx backend/scripts/deploy-fin-token.ts",
+    "mint:fin": "tsx backend/scripts/mint-fin-supply.ts",
+    "check:config": "tsx backend/scripts/validate-config.ts",
+    "step1:all": "tsx backend/scripts/step1-all.ts",
+    "wallet:new": "tsx backend/scripts/generate-wallet.ts",
+    "faucet:to": "tsx backend/scripts/faucet-to-address.ts",
+    "treasury:check": "tsx backend/scripts/check-market-treasury.ts",
+    "faucet:diagnose": "tsx backend/scripts/diagnose-faucet.ts",
+    "faucet:ready": "tsx backend/scripts/faucet-ready.ts",
+    "dev": "npm run dev --prefix frontend",
+    "build:web": "npm run build --prefix frontend",
+    "build:web:docker": "docker build -f frontend/Dockerfile -t finality-web-build .",
+    "build:web:docker:sync": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/sync-next-from-docker.ps1",
+    "build:web:ntfs": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/build-web-ntfs-temp.ps1",
+    "bootstrap:market": "npm run bootstrap --prefix backend/dia-relayer",
+    "emergency:init": "npm run emergency-init --prefix backend/dia-relayer"
+  },
+  "dependencies": {
+    "@gear-js/api": "latest",
+    "@polkadot/keyring": "latest",
+    "@polkadot/util-crypto": "latest",
+    "dotenv": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

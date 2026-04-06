@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Header } from "@/components/Header";
 import { useWallet } from "@/lib/wallet";
 import { isAdminWallet, ADMIN_WALLET } from "@/lib/config";
 import { getUpcomingFixtures, getRecentResults, type Fixture } from "@/lib/fixtures";
@@ -70,27 +71,35 @@ export default function AdminPage() {
 
   if (!account) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-        <h1 className="text-3xl text-white">Admin Panel</h1>
-        <p className="mt-4 text-mist">Connect your wallet to access admin features.</p>
-      </div>
+      <>
+        <Header />
+        <div className="mx-auto max-w-6xl px-4 py-16 text-center">
+          <h1 className="text-3xl text-white">Admin Panel</h1>
+          <p className="mt-4 text-mist">Connect your wallet to access admin features.</p>
+        </div>
+      </>
     );
   }
 
   if (!isAdmin) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-        <h1 className="text-3xl text-white">Access Denied</h1>
-        <p className="mt-4 text-mist">
-          This page is only for the admin wallet.
-          <br />
-          Admin: {ADMIN_WALLET ? `${ADMIN_WALLET.slice(0, 10)}...${ADMIN_WALLET.slice(-8)}` : "Not configured"}
-        </p>
-      </div>
+      <>
+        <Header />
+        <div className="mx-auto max-w-6xl px-4 py-16 text-center">
+          <h1 className="text-3xl text-white">Access Denied</h1>
+          <p className="mt-4 text-mist">
+            This page is only for the admin wallet.
+            <br />
+            Admin: {ADMIN_WALLET ? `${ADMIN_WALLET.slice(0, 10)}...${ADMIN_WALLET.slice(-8)}` : "Not configured"}
+          </p>
+        </div>
+      </>
     );
   }
 
   return (
+    <>
+      <Header />
     <div className="mx-auto max-w-7xl px-3 sm:px-4 pb-14 sm:pb-20 pt-5 sm:pt-8">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-3xl text-white font-display">Sports Market Admin</h1>
@@ -371,7 +380,8 @@ export default function AdminPage() {
             </button>
           </div>
         </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

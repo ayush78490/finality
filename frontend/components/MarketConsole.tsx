@@ -295,6 +295,8 @@ export function MarketConsole({ market }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
+  const hasHistory = historyRecords.length > 0;
+
   /** Seconds until this **on-chain** round ends (Open only). */
   const timeLeftSec = useMemo((): number | null => {
     // If no round data, use wall clock
@@ -604,10 +606,47 @@ export function MarketConsole({ market }: Props) {
           </div>
 
           <div className="flex items-start gap-4 sm:gap-8 mt-2 sm:mt-0">
-            <div className="mt-1 sm:mt-2 flex items-center gap-3 sm:gap-4 text-[#d5e0ea]">
-              <span className="text-lg sm:text-xl">&lt;/&gt;</span>
-              <span className="text-lg sm:text-xl">🔗</span>
-            </div>
+            {hasHistory && (
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-[#2a3b4b] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("live")}
+                    className={`px-3 py-1.5 text-xs font-medium transition ${
+                      viewMode === "live"
+                        ? "bg-[#2d475f] text-white"
+                        : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
+                    }`}
+                  >
+                    Live
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("history")}
+                    className={`px-3 py-1.5 text-xs font-medium transition ${
+                      viewMode === "history"
+                        ? "bg-[#2d475f] text-white"
+                        : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
+                    }`}
+                  >
+                    History
+                  </button>
+                </div>
+                {viewMode === "history" && historyRecords.length > 1 && (
+                  <select
+                    value={selectedHistoryId || ""}
+                    onChange={(e) => setSelectedHistoryId(e.target.value)}
+                    className="bg-[#111b25] text-white text-xs px-2 py-1.5 rounded-lg border border-[#2a3b4b] cursor-pointer"
+                  >
+                    {historyRecords.map((r) => (
+                      <option key={r.roundId} value={r.roundId}>
+                        Round #{r.roundId}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div className="text-right">
               <div className="font-mono text-3xl sm:text-4xl font-semibold text-[#ff4c55] md:text-[2.6rem]">
                 {timeLeftSec !== null

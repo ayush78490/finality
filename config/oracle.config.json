@@ -1,7 +1,7 @@
 {
   "diaBaseUrl": "https://api.diadata.org",
   "marketProgramId": "0x8743f51472971cc51056a19a761e262304dfd9fecf2df27cbe1bd371b809e6e9",
-  "adminWallet": "0x5cda6f27cfb314e744a2e9718db1add46be4b7cfc86812e2ee4f168a77948f4d",
+  "adminWallet": "0xc83ed8c6d89bae7f2bd396b36c594857cb590ec43eb332488abc88339006782f",
   "pollIntervalMs": 5000,
   "maxPriceAgeSeconds": 120,
   "feeds": [

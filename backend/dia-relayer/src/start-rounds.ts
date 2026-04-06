@@ -23,6 +23,7 @@ import type { KeyringPair } from "@polkadot/keyring/types";
 import { cryptoWaitReady } from "@polkadot/util-crypto";
 import { loadRelayerConfig } from "./config.js";
 import { binanceSymbolForFeed, fetchBinanceSpotTick } from "./binance.js";
+import { fetchLatestDia } from "./dia.js";
 import {
   encodeFinSettleRound,
   encodeFinStartRound,
@@ -31,6 +32,7 @@ import {
 } from "./sails-scale.js";
 import { sendGearMessage } from "./send-gear-message.js";
 import { createVaraKeyring } from "./keyring-vara.js";
+import { waitForRoundVisible } from "./round-read.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,11 +42,27 @@ async function pushOracle(
   api: GearApi,
   marketId: string,
   feed: { assetId: number; symbol: string; diaSymbol: string; binanceSymbol?: string },
-  oracle: KeyringPair
+  oracle: KeyringPair,
+  diaBaseUrl: string
 ): Promise<void> {
-  const sym = binanceSymbolForFeed(feed);
-  const tick = await fetchBinanceSpotTick(sym);
-  const pl = encodeOracleSubmitRound(api, feed.assetId, tick.price);
+  let price: bigint;
+  try {
+    const sym = binanceSymbolForFeed(feed);
+    const tick = await fetchBinanceSpotTick(sym);
+    price = tick.price;
+  } catch {
+    const dia = await fetchLatestDia(diaBaseUrl, feed.diaSymbol);
+    price = BigInt(dia.price.price);
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        msg: "oracle_fallback_dia",
+        symbol: feed.symbol,
+        diaSymbol: feed.diaSymbol,
+      })
+    );
+  }
+  const pl = encodeOracleSubmitRound(api, feed.assetId, price);
   await sendGearMessage(api, marketId, pl, oracle);
 }
 
@@ -94,7 +112,7 @@ async function main() {
     // 1. Fresh oracle tick before settle (Fin.settle_round needs a recent submit_round)
     console.log(JSON.stringify({ level: "info", msg: "oracle_push_before_settle", symbol: assetKey }));
     try {
-      await pushOracle(api, marketId, feed, oracle);
+      await pushOracle(api, marketId, feed, oracle, fileCfg.diaBaseUrl);
       await new Promise((r) => setTimeout(r, 1200));
     } catch (e: any) {
       console.log(
@@ -127,7 +145,7 @@ async function main() {
     // 3. Fresh tick before start_round (same stale-oracle guard as settle)
     console.log(JSON.stringify({ level: "info", msg: "oracle_push_before_start", symbol: assetKey }));
     try {
-      await pushOracle(api, marketId, feed, oracle);
+      await pushOracle(api, marketId, feed, oracle, fileCfg.diaBaseUrl);
       await new Promise((r) => setTimeout(r, 1200));
     } catch (e: any) {
       console.log(
@@ -167,18 +185,75 @@ async function main() {
       continue;
     }
 
-    console.log(JSON.stringify({ level: "info", msg: "starting_round", symbol: assetKey }));
-    try {
-      const startPl = encodeFinStartRound(api, assetKey, seedFin, feeBps);
-      await sendGearMessage(api, marketId, startPl, admin);
-      console.log(JSON.stringify({ level: "info", msg: "start_round_ok", symbol: assetKey }));
-    } catch (e: any) {
+    const maxStartAttempts = 3;
+    let started = false;
+    for (let startAttempt = 1; startAttempt <= maxStartAttempts; startAttempt++) {
+      if (startAttempt > 1) {
+        console.log(
+          JSON.stringify({
+            level: "warn",
+            msg: "start_round_retry",
+            symbol: assetKey,
+            attempt: startAttempt,
+          })
+        );
+        try {
+          await pushOracle(api, marketId, feed, oracle, fileCfg.diaBaseUrl);
+        } catch (e: any) {
+          console.log(
+            JSON.stringify({
+              level: "error",
+              msg: "submit_round_failed_before_retry_start",
+              symbol: assetKey,
+              error: e?.message ?? String(e),
+            })
+          );
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+      }
+
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "starting_round",
+          symbol: assetKey,
+          attempt: startAttempt,
+        })
+      );
+      try {
+        const startPl = encodeFinStartRound(api, assetKey, seedFin, feeBps);
+        await sendGearMessage(api, marketId, startPl, admin);
+        const visible = await waitForRoundVisible(api, marketId, assetKey, admin.address, {
+          attempts: 12,
+          intervalMs: 1500,
+        });
+        if (!visible) {
+          throw new Error("round_not_visible_after_start");
+        }
+        console.log(JSON.stringify({ level: "info", msg: "start_round_ok", symbol: assetKey }));
+        started = true;
+        break;
+      } catch (e: any) {
+        const err = e?.message ?? String(e);
+        console.log(
+          JSON.stringify({
+            level: startAttempt === maxStartAttempts ? "error" : "warn",
+            msg: "start_round_failed",
+            symbol: assetKey,
+            attempt: startAttempt,
+            error: err,
+          })
+        );
+      }
+    }
+
+    if (!started) {
       console.log(
         JSON.stringify({
           level: "error",
-          msg: "start_round_failed",
+          msg: "start_round_gave_up",
           symbol: assetKey,
-          error: e?.message ?? String(e),
         })
       );
     }

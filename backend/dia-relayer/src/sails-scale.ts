@@ -129,6 +129,15 @@ export function encodeFinSettleRound(api: GearApi, assetKey: string): Uint8Array
   );
 }
 
+/** `Fin.ClaimSeed(asset_key)` — admin claims back their seed liquidity after round is settled. */
+export function encodeFinClaimSeed(api: GearApi, assetKey: string): Uint8Array {
+  return u8aConcat(
+    scaleStr("Fin"),
+    scaleStr("ClaimSeed"),
+    api.registry.createType("String", assetKey).toU8a()
+  );
+}
+
 /** Payload that only succeeds gas simulation once `Fin.init` has committed on-chain. */
 export function encodeFinSetPaused(api: GearApi, paused: boolean): Uint8Array {
   return u8aConcat(scaleStr("Fin"), scaleStr("SetPaused"), api.registry.createType("bool", paused).toU8a());

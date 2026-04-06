@@ -73,6 +73,8 @@ pub struct Round {
     /// Initial per-side seed the admin deposited via `start_round`.
     /// Returned to admin at settlement; only user-traded FIN is distributed to winners.
     pub seed_per_side: u128,
+    /// Track trader FIN deposited (excludes admin seed) for payout calculation.
+    pub trader_fin_deposited: u128,
     /// Remaining FIN in the user-only payout pool for winners (snapshot at settlement).
     pub payout_fin_remaining: u128,
     pub winning_shares_remaining: u128,
@@ -361,6 +363,7 @@ impl Finality {
                 seed_per_side: liquidity_seed,
                 payout_fin_remaining: 0,
                 winning_shares_remaining: 0,
+                trader_fin_deposited: 0,
             };
             st.rounds.insert(asset_key, round);
             Ok(())
@@ -443,6 +446,8 @@ impl Finality {
         }
         round.fee_acc = round.fee_acc.saturating_add(fee);
 
+        round.trader_fin_deposited = round.trader_fin_deposited.saturating_add(fin_eff);
+
         let rid = round.id;
         let pos = st
             .positions
@@ -491,15 +496,12 @@ impl Finality {
             round.outcome_up = Some(up_wins);
             round.phase = RoundPhase::Resolved;
 
-            // Full pool (seed + all user trades) goes to winners.
-            // seed_per_side is stored for informational display only.
-            let pool = round.reserve_up.saturating_add(round.reserve_down);
             let win_shares = if up_wins {
                 round.total_shares_up
             } else {
                 round.total_shares_down
             };
-            round.payout_fin_remaining = pool;
+            round.payout_fin_remaining = round.trader_fin_deposited;
             round.winning_shares_remaining = win_shares;
         });
     }
@@ -560,6 +562,44 @@ impl Finality {
         });
 
         let payload = vft::transfer_payload(user, U256::from(payout));
+        let reply = msg::send_bytes_for_reply(FIN_TOKEN_PROGRAM, payload, 0, VFT_REPLY_DEPOSIT)
+            .map_err(|_| String::from("vft send"))?
+            .await
+            .map_err(|_| String::from("vft reply"))?;
+        let ok = vft::decode_bool_reply(&reply, "Transfer").map_err(String::from)?;
+        if !ok {
+            panic!("vft transfer failed");
+        }
+        Ok(())
+    }
+
+    /// Admin claims back their seed liquidity after round is settled.
+    #[export]
+    pub async fn claim_seed(&mut self, asset_key: String) -> Result<(), String> {
+        with_state(|st| {
+            ensure_initialized(st);
+            ensure_admin(st);
+        });
+        let admin = msg::source();
+
+        let (seed_amount, rid) = with_state_mut(|st| {
+            let round = st
+                .rounds
+                .get_mut(&asset_key)
+                .ok_or_else(|| String::from("no round"))?;
+            if round.phase != RoundPhase::Resolved {
+                return Err(String::from("not resolved"));
+            }
+            let rid = round.id;
+            let seed_total = round.seed_per_side.saturating_mul(2);
+            if seed_total == 0 {
+                return Err(String::from("no seed to claim"));
+            }
+            round.seed_per_side = 0;
+            Ok((seed_total, rid))
+        })?;
+
+        let payload = vft::transfer_payload(admin, U256::from(seed_amount));
         let reply = msg::send_bytes_for_reply(FIN_TOKEN_PROGRAM, payload, 0, VFT_REPLY_DEPOSIT)
             .map_err(|_| String::from("vft send"))?
             .await

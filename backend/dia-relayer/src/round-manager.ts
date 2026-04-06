@@ -13,8 +13,8 @@
  *   LIQUIDITY_SEED_FIN  – u128 base-units per side (default 100 FIN)
  *   FEE_BPS             – fee in basis points (default 100 = 1%)
  *   ROUND_CHECK_MS      – how often to poll (default 15000)
- *   SETTLE_TO_START_DELAY_MS – ms to wait after a successful settle before start_round (default 180000).
- *                               Claim only works while the round is still Resolved; this widens the window.
+ *   SETTLE_TO_START_DELAY_MS – ms to wait after a successful settle before start_round (default 0).
+ *                               New flow: immediate start after end_ts - admin seed auto-claimed.
  *   ROUND_MANAGER_SEND_TXS – must be "true" or "1" to submit any extrinsic (submit_round, settle, start).
  *                            If unset, the process exits immediately — no on-chain messages.
  *
@@ -33,14 +33,17 @@ import { cryptoWaitReady } from "@polkadot/util-crypto";
 import type { RelayerFileConfig } from "./config.js";
 import { loadRelayerConfig } from "./config.js";
 import { binanceSymbolForFeed, fetchBinanceSpotTick } from "./binance.js";
+import { fetchLatestDia } from "./dia.js";
 import {
   encodeFinSettleRound,
   encodeFinStartRound,
   encodeOracleSubmitRound,
   encodeVftApprove,
+  encodeFinClaimSeed,
 } from "./sails-scale.js";
 import { sendGearMessage } from "./send-gear-message.js";
 import { pingOracleKeeperHealth, postOracleKeeperResolve } from "./oracle-keeper.js";
+import { waitForRoundVisible, readRoundState, readRoundDetail } from "./round-read.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -48,41 +51,158 @@ const FIN_DECIMALS = 12;
 
 type FeedEntry = RelayerFileConfig["feeds"][number];
 
+const startRetryCooldownMs = (() => {
+  const raw = process.env.START_RETRY_COOLDOWN_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 180_000;
+})();
+
+const insufficientBalanceCooldownMs = (() => {
+  const raw = process.env.START_RETRY_COOLDOWN_INSUFFICIENT_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 900_000;
+})();
+
+const nextStartAttemptAtMs = new Map<string, number>();
+
+function markStartCooldown(symbol: string, errMsg: string): void {
+  const now = Date.now();
+  const cooldown = /InsufficientBalance/i.test(errMsg)
+    ? insufficientBalanceCooldownMs
+    : startRetryCooldownMs;
+  nextStartAttemptAtMs.set(symbol, now + cooldown);
+  console.log(
+    JSON.stringify({
+      level: "warn",
+      msg: "start_round_cooldown_set",
+      symbol,
+      retryAfterMs: cooldown,
+      retryAtMs: now + cooldown,
+      reason: errMsg,
+    })
+  );
+}
+
+function clearStartCooldown(symbol: string): void {
+  nextStartAttemptAtMs.delete(symbol);
+}
+
 async function pushBinanceOracle(
   api: GearApi,
   marketId: string,
   feed: FeedEntry,
-  oracle: any
+  oracle: any,
+  diaBaseUrl: string
 ): Promise<void> {
-  const sym = binanceSymbolForFeed(feed);
-  const tick = await fetchBinanceSpotTick(sym);
-  const payload = encodeOracleSubmitRound(api, feed.assetId, tick.price);
+  let price: bigint;
+  try {
+    const sym = binanceSymbolForFeed(feed);
+    const tick = await fetchBinanceSpotTick(sym);
+    price = tick.price;
+  } catch {
+    const dia = await fetchLatestDia(diaBaseUrl, feed.diaSymbol);
+    price = BigInt(dia.price.price);
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        msg: "oracle_fallback_dia",
+        symbol: feed.symbol,
+        diaSymbol: feed.diaSymbol,
+      })
+    );
+  }
+  const payload = encodeOracleSubmitRound(api, feed.assetId, price);
   await sendGearMessage(api, marketId, payload, oracle);
 }
 
-/** Gas simulation for settle: avoids submit_round when the round is still active or there is nothing to settle. */
+/**
+ * Checks on-chain round state and end_ts to determine whether we should attempt settlement.
+ *
+ * Returns:
+ *   "too_early"  — round exists and has NOT yet expired (endTs still in the future)
+ *   "can_settle" — round is Open/Locked AND its endTs has passed → settle is due
+ *   "no_round"   — no round exists, or it's already Resolved → skip to start_round
+ */
 async function classifySettleSim(
   api: GearApi,
   marketId: string,
   assetKey: string,
-  adminHex: string
+  adminHex: string,
+  admin: any
 ): Promise<"too_early" | "can_settle" | "no_round"> {
-  const payload = encodeFinSettleRound(api, assetKey);
+  // Use the full round detail so we can inspect endTs alongside the phase.
+  let detail: Awaited<ReturnType<typeof readRoundDetail>>;
   try {
-    await api.program.calculateGas.handle(
-      adminHex as `0x${string}`,
-      marketId as `0x${string}`,
-      payload,
-      0,
-      true
-    );
-    return "can_settle";
+    detail = await readRoundDetail(api, marketId, assetKey, admin.address);
   } catch (e: any) {
-    const msg = String(e?.message ?? e);
-    if (msg.includes("too early")) return "too_early";
-    if (msg.includes("no round") || msg.includes("not open")) return "no_round";
-    return "can_settle";
+    console.log(
+      JSON.stringify({
+        level: "warn",
+        msg: "settle_state_read_error",
+        symbol: assetKey,
+        error: e?.message ?? String(e),
+      })
+    );
+    // Fall back to a basic state read so we don't lose the "no_round" / "Resolved" path.
+    const state = await readRoundState(api, marketId, assetKey, admin.address);
+    if (state === "None" || state === "Resolved") return "no_round";
+    return "too_early";
   }
+
+  console.log(
+    JSON.stringify({
+      level: "debug",
+      msg: "settle_state_check",
+      symbol: assetKey,
+      phase: detail.phase,
+      endTs: detail.endTs,
+      nowMs: Date.now(),
+    })
+  );
+
+  if (!detail.phase || detail.phase === "None") {
+    return "no_round";
+  }
+
+  if (detail.phase === "Resolved") {
+    console.log(
+      JSON.stringify({
+        level: "debug",
+        msg: "settle_state_already_resolved_skip_settle",
+        symbol: assetKey,
+      })
+    );
+    // Round is already resolved — skip settle, go straight to start new round.
+    return "no_round";
+  }
+
+  // Open or Locked — check whether endTs has passed.
+  const nowMs = Date.now();
+  const endMs = detail.endTs; // ms (the relayer reads endTs as seconds × 1000 or raw ms — see readRoundDetail)
+  if (nowMs < endMs) {
+    console.log(
+      JSON.stringify({
+        level: "debug",
+        msg: "settle_state_not_expired_yet",
+        symbol: assetKey,
+        phase: detail.phase,
+        msUntilEnd: endMs - nowMs,
+      })
+    );
+    return "too_early";
+  }
+
+  // Round has expired — ready to settle.
+  console.log(
+    JSON.stringify({
+      level: "debug",
+      msg: "settle_state_expired_can_settle",
+      symbol: assetKey,
+      phase: detail.phase,
+      expiredAgoMs: nowMs - endMs,
+    })
+  );
+  return "can_settle";
 }
 
 /**
@@ -105,7 +225,16 @@ async function trySettleWithPush(
   } | null
 ): Promise<"active" | "settled" | "no_round"> {
   const adminHex = api.registry.createType("AccountId", admin.address).toHex();
-  const sim = await classifySettleSim(api, marketId, assetKey, adminHex);
+  const sim = await classifySettleSim(api, marketId, assetKey, adminHex, admin);
+
+  console.log(
+    JSON.stringify({
+      level: "debug",
+      msg: "settle_classify_result",
+      symbol: assetKey,
+      classification: sim,
+    })
+  );
 
   if (sim === "too_early") {
     console.log(
@@ -118,6 +247,15 @@ async function trySettleWithPush(
     console.log(JSON.stringify({ level: "info", msg: "settle_skip_no_round", symbol: assetKey }));
     return "no_round";
   }
+
+  console.log(
+    JSON.stringify({
+      level: "debug",
+      msg: "settle_attempting",
+      symbol: assetKey,
+      simResult: sim,
+    })
+  );
 
   if (keeper?.baseUrl) {
     try {
@@ -174,14 +312,33 @@ async function trySettleWithPush(
     }
   }
 
-  await pushBinanceOracle(api, marketId, feed, oracle);
+  const cfgPath =
+    process.env.ORACLE_CONFIG ?? path.resolve(__dirname, "../../..", "config", "oracle.config.json");
+  const cfg = loadRelayerConfig(cfgPath);
+  
+  console.log(JSON.stringify({ level: "debug", msg: "push_oracle_before_settle", symbol: assetKey }));
+  await pushBinanceOracle(api, marketId, feed, oracle, cfg.diaBaseUrl);
+  console.log(JSON.stringify({ level: "debug", msg: "oracle_pushed_attempting_settle", symbol: assetKey }));
+  
   try {
     await sendGearMessage(api, marketId, encodeFinSettleRound(api, assetKey), admin);
     console.log(JSON.stringify({ level: "info", msg: "settle_ok", symbol: assetKey }));
     settledAtMs.set(assetKey, Date.now());
+    
+    // Auto-claim seed after settlement (new flow - return liquidity to admin immediately)
+    try {
+      await sendGearMessage(api, marketId, encodeFinClaimSeed(api, assetKey), admin);
+      console.log(JSON.stringify({ level: "info", msg: "admin_seed_claimed", symbol: assetKey }));
+    } catch (claimErr: any) {
+      const claimMsg = claimErr?.message ?? String(claimErr);
+      // Not critical if it fails - might be no seed or already claimed
+      console.log(JSON.stringify({ level: "debug", msg: "claim_seed_skipped", symbol: assetKey, reason: claimMsg }));
+    }
+    
     return "settled";
   } catch (e: any) {
     const msg: string = e?.message ?? String(e);
+    console.log(JSON.stringify({ level: "warn", msg: "settle_error", symbol: assetKey, error: msg }));
     if (msg.includes("too early")) {
       console.log(
         JSON.stringify({ level: "info", msg: "round_active_too_early", symbol: assetKey })
@@ -190,23 +347,24 @@ async function trySettleWithPush(
     }
     if (msg.includes("no round") || msg.includes("not open")) {
       console.log(
-        JSON.stringify({ level: "info", msg: "settle_skip", symbol: assetKey, reason: msg })
+        JSON.stringify({ level: "info", msg: "settle_skip_already_resolved", symbol: assetKey, reason: msg })
       );
       return "no_round";
     }
+    // For any other error, also return no_round so we proceed to start
     console.log(
-      JSON.stringify({ level: "warn", msg: "settle_unexpected", symbol: assetKey, error: msg })
+      JSON.stringify({ level: "warn", msg: "settle_other_error_proceed_to_start", symbol: assetKey, error: msg })
     );
     return "no_round";
   }
 }
 
-/** After settlement, winners must claim while the round is still `Resolved`. `start_round` replaces that state — delay gives users time to claim. */
+/** After settlement, winners must claim while the round is still `Resolved`. New flow: immediate start after end_ts - claim window handled by smart contract. */
 function settleToStartDelayMs(): number {
   const raw = process.env.SETTLE_TO_START_DELAY_MS?.trim();
   const n = raw ? Number(raw) : NaN;
   if (Number.isFinite(n) && n >= 0) return Math.floor(n);
-  return 60_000; // default 1 minute (testnet-friendly; override with SETTLE_TO_START_DELAY_MS)
+  return 0; // default: immediate start (new flow - auto-distribute on end_ts)
 }
 
 /**
@@ -232,6 +390,9 @@ async function startRound(
     notifyStart: boolean;
   } | null
 ): Promise<void> {
+  const cfgPath =
+    process.env.ORACLE_CONFIG ?? path.resolve(__dirname, "../../..", "config", "oracle.config.json");
+  const cfg = loadRelayerConfig(cfgPath);
   if (keeper?.notifyStart && keeper.baseUrl) {
     try {
       const res = await postOracleKeeperResolve(keeper.baseUrl, {
@@ -260,7 +421,7 @@ async function startRound(
     }
   }
 
-  await pushBinanceOracle(api, marketId, feed, oracle);
+  await pushBinanceOracle(api, marketId, feed, oracle, cfg.diaBaseUrl);
 
   const approveAmount = seedFin * 2n;
   console.log(
@@ -274,17 +435,44 @@ async function startRound(
   await sendGearMessage(api, finId, encodeVftApprove(api, marketId, approveAmount), admin);
   await new Promise((r) => setTimeout(r, 1000));
 
-  console.log(
-    JSON.stringify({
-      level: "info",
-      msg: "starting_round",
-      symbol: assetKey,
-      seedFin: seedFin.toString(),
-      feeBps,
-    })
-  );
-  await sendGearMessage(api, marketId, encodeFinStartRound(api, assetKey, seedFin, feeBps), admin);
-  console.log(JSON.stringify({ level: "info", msg: "round_started", symbol: assetKey }));
+  const maxStartAttempts = 3;
+  for (let startAttempt = 1; startAttempt <= maxStartAttempts; startAttempt++) {
+    if (startAttempt > 1) {
+      await pushBinanceOracle(api, marketId, feed, oracle, cfg.diaBaseUrl);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "starting_round",
+        symbol: assetKey,
+        seedFin: seedFin.toString(),
+        feeBps,
+        attempt: startAttempt,
+      })
+    );
+    await sendGearMessage(api, marketId, encodeFinStartRound(api, assetKey, seedFin, feeBps), admin);
+    const visible = await waitForRoundVisible(api, marketId, assetKey, admin.address, {
+      attempts: 12,
+      intervalMs: 1500,
+    });
+    if (visible) {
+      console.log(JSON.stringify({ level: "info", msg: "round_started", symbol: assetKey }));
+      return;
+    }
+
+    console.log(
+      JSON.stringify({
+        level: startAttempt === maxStartAttempts ? "error" : "warn",
+        msg: "round_not_visible_after_start",
+        symbol: assetKey,
+        attempt: startAttempt,
+      })
+    );
+  }
+
+  throw new Error("round_not_visible_after_start");
 }
 
 async function main() {
@@ -364,6 +552,8 @@ async function main() {
       oracleKeeperUrl: keeperBase || null,
       oracleKeeperOnly: keeperOnly,
       oracleKeeperNotifyStart: keeperNotifyStart,
+      startRetryCooldownMs,
+      insufficientBalanceCooldownMs,
     })
   );
 
@@ -378,50 +568,57 @@ async function main() {
       keeperOpts
     );
 
+    console.log(
+      JSON.stringify({
+        level: "debug",
+        msg: "manage_round_result",
+        symbol: feed.symbol,
+        result,
+      })
+    );
+
     if (result === "active") return;
 
-    // Determine how long to wait before starting the next round.
-    // "settled" = we just settled this iteration → start the full claim window.
-    // "no_round" = round was already Resolved (or genuinely no round) when this loop ran.
-    //   • If settledAtMs has a timestamp from a previous iteration, honour the remaining window.
-    //   • If settledAtMs is empty (process just restarted, round was Resolved on arrival),
-    //     skip the claim window — assume the previous settle happened long before restart.
-    const claimWindowMs = settleToStartDelayMs();
-
-    if (result === "settled") {
-      // Fresh settle this iteration — wait the full claim window.
+    const blockUntil = nextStartAttemptAtMs.get(feed.symbol) ?? 0;
+    const now = Date.now();
+    if (blockUntil > now) {
       console.log(
         JSON.stringify({
           level: "info",
-          msg: "settle_to_start_delay",
+          msg: "start_round_skipped_cooldown",
           symbol: feed.symbol,
-          delayMs: claimWindowMs,
+          waitMs: blockUntil - now,
+          reason: "recent_start_failure",
         })
       );
-      await new Promise((r) => setTimeout(r, claimWindowMs));
-    } else {
-      // Round is already Resolved (no_round).
-      const prev = settledAtMs.get(feed.symbol);
-      if (prev !== undefined) {
-        const elapsed = Date.now() - prev;
-        const remaining = claimWindowMs - elapsed;
-        if (remaining > 0) {
-          // Still within the original claim window — keep waiting.
-          console.log(
-            JSON.stringify({
-              level: "info",
-              msg: "claim_window_remaining",
-              symbol: feed.symbol,
-              remainingMs: remaining,
-            })
-          );
-          await new Promise((r) => setTimeout(r, remaining));
-        }
-        // else: claim window already elapsed — proceed to start_round immediately.
-      }
-      // else: process just started, round was already Resolved — start immediately.
+      return;
     }
 
+    // Re-check state right before start to avoid racing a newly opened round.
+    const stateBeforeStart = await readRoundState(api, marketId, feed.symbol, admin.address);
+    if (stateBeforeStart === "Open" || stateBeforeStart === "Locked") {
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "start_round_skip_existing_active",
+          symbol: feed.symbol,
+          state: stateBeforeStart,
+        })
+      );
+      clearStartCooldown(feed.symbol);
+      return;
+    }
+
+    // After resolve, immediately start a new round (no delay).
+    // Claim/settle can happen anytime - but new market should start ASAP.
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "starting_new_round",
+        symbol: feed.symbol,
+        reason: result,
+      })
+    );
     try {
       await startRound(
         api,
@@ -435,8 +632,10 @@ async function main() {
         feeBps,
         keeperStartOpts
       );
+      clearStartCooldown(feed.symbol);
     } catch (e: any) {
       const msg: string = e?.message ?? String(e);
+      markStartCooldown(feed.symbol, msg);
       if (msg.includes("no oracle tick") || msg.includes("stale oracle")) {
         console.log(
           JSON.stringify({

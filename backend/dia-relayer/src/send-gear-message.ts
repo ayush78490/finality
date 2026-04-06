@@ -2,6 +2,32 @@ import type { GearApi } from "@gear-js/api";
 import { gearPayloadHex } from "./sails-scale.js";
 import { initialTip, parsePoolPriority, tipToBeat } from "./tip.js";
 
+function parseGasLimit(api: GearApi, simulated: bigint): bigint {
+  const blockCap = api.blockGasLimit.toBigInt();
+  const minFloor = BigInt(process.env.GEAR_HANDLE_MIN_GAS ?? "250000000000");
+  const useBlockGas =
+    process.env.GEAR_USE_BLOCK_GAS === undefined ||
+    process.env.GEAR_USE_BLOCK_GAS === "1" ||
+    process.env.GEAR_USE_BLOCK_GAS?.toLowerCase() === "true";
+
+  if (useBlockGas) return blockCap;
+  const floored = simulated > minFloor ? simulated : minFloor;
+  return floored > blockCap ? blockCap : floored;
+}
+
+function hasGearDispatchFailure(events: any[]): string | null {
+  for (const { event } of events ?? []) {
+    if (event.section !== "gear" || event.method !== "MessagesDispatched") continue;
+    const text = JSON.stringify(
+      (event as any).data?.toHuman?.() ?? (event as any).data?.toString?.() ?? ""
+    );
+    if (/Failed|Failure|NotExecuted|Trap|panic|OutOfGas|ExecutionError/i.test(text)) {
+      return text;
+    }
+  }
+  return null;
+}
+
 /** Send a `gear.sendMessage` extrinsic, retrying on 1014 with an escalating tip. */
 export async function sendGearMessage(
   api: GearApi,
@@ -19,9 +45,10 @@ export async function sendGearMessage(
       0,
       true
     );
-    gasLimit = (info.min_limit.toBigInt() * 11n) / 10n;
+    const withHeadroom = (info.min_limit.toBigInt() * 11n) / 10n;
+    gasLimit = parseGasLimit(api, withHeadroom);
   } catch {
-    gasLimit = 500_000_000_000n;
+    gasLimit = parseGasLimit(api, 500_000_000_000n);
   }
 
   // Compute partialFee once for tip calculations.
@@ -43,7 +70,7 @@ export async function sendGearMessage(
 
     try {
       await new Promise<void>((resolve, reject) => {
-        tx.signAndSend(signer, { nonce, tip } as any, ({ status, dispatchError }: any) => {
+        tx.signAndSend(signer, { nonce, tip } as any, ({ status, dispatchError, events }: any) => {
           if (dispatchError) {
             if (dispatchError.isModule) {
               const meta = api.registry.findMetaError(dispatchError.asModule);
@@ -53,7 +80,14 @@ export async function sendGearMessage(
             }
             return;
           }
-          if (status?.isInBlock || status?.isFinalized) resolve();
+          if (status?.isFinalized) {
+            const messageFailure = hasGearDispatchFailure(events ?? []);
+            if (messageFailure) {
+              reject(new Error(`Gear message dispatch failed: ${messageFailure}`));
+              return;
+            }
+            resolve();
+          }
         }).catch(reject);
       });
       return; // success

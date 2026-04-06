@@ -7,7 +7,7 @@
  * UI round id advances while old positions remain keyed by the previous id.
  */
 import type { GearApi } from "@gear-js/api";
-import { MARKET_PROGRAM_ID, ADMIN_WALLET } from "./config";
+import { MARKET_PROGRAM_ID, getAdminWallet } from "./config";
 import { fetchMarketRoundDetail, type MarketRoundDetail } from "./fin-get-round";
 import { fetchUserPosition } from "./fin-position";
 import { MARKETS, type MarketMeta } from "./markets";
@@ -182,11 +182,11 @@ export async function fetchProfileMarketSummaries(
 }
 
 export async function fetchCreatedMarkets(api: GearApi): Promise<CreatedMarketInfo[]> {
-  if (!MARKET_PROGRAM_ID || !ADMIN_WALLET) return [];
+  if (!MARKET_PROGRAM_ID || !getAdminWallet()) return [];
 
   const results = await Promise.allSettled(
     MARKETS.map(async (market) => {
-      const detail = await fetchMarketRoundDetail(api, MARKET_PROGRAM_ID!, market.assetKey, ADMIN_WALLET);
+      const detail = await fetchMarketRoundDetail(api, MARKET_PROGRAM_ID!, market.assetKey, getAdminWallet());
       let status: CreatedMarketInfo["status"] = "no_round";
       let roundCount = 0;
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
 import { useWallet } from "@/lib/wallet";
-import { isAdminWallet, ADMIN_WALLET } from "@/lib/config";
+import { isAdminWallet, getAdminWallet } from "@/lib/config";
 import { getUpcomingFixtures, getRecentResults, type Fixture } from "@/lib/fixtures";
 
 type Tab = "upcoming" | "results" | "create";
@@ -90,7 +90,7 @@ export default function AdminPage() {
           <p className="mt-4 text-mist">
             This page is only for the admin wallet.
             <br />
-            Admin: {ADMIN_WALLET ? `${ADMIN_WALLET.slice(0, 10)}...${ADMIN_WALLET.slice(-8)}` : "Not configured"}
+            Admin: {getAdminWallet() ? `${getAdminWallet().slice(0, 10)}...${getAdminWallet().slice(-8)}` : "Not configured"}
           </p>
         </div>
       </>

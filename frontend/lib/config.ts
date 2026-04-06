@@ -1,5 +1,7 @@
 import deployed from "../../config/deployed.token.json";
 import oracleCfg from "../../config/oracle.config.json";
+import { Keyring } from "@polkadot/keyring";
+import { encodeAddress } from "@polkadot/util-crypto";
 
 export const VARA_WS =
   process.env.NEXT_PUBLIC_VARA_WS ?? "wss://testnet.vara.network";
@@ -8,9 +10,30 @@ const CANONICAL_MARKET_PROGRAM_ID = oracleCfg.marketProgramId as string;
 const envMarket = process.env.NEXT_PUBLIC_MARKET_PROGRAM_ID?.trim();
 
 /**
- * Admin wallet address - market creator. Used to show created markets in profile.
+ * Admin wallet address in SS58 format (kGk...).
+ * Converted from hex in oracle.config.json.
  */
-export const ADMIN_WALLET = (oracleCfg.adminWallet as string) || "";
+const ADMIN_WALLET_RAW = oracleCfg.adminWallet as string;
+
+function getAdminWalletSS58(): string {
+  if (!ADMIN_WALLET_RAW) return "";
+  try {
+    const keyring = new Keyring({ type: "sr25519", ss58Format: 137 });
+    return keyring.encodeAddress(ADMIN_WALLET_RAW);
+  } catch {
+    return ADMIN_WALLET_RAW;
+  }
+}
+
+const ADMIN_WALLET_SS58 = getAdminWalletSS58();
+
+/**
+ * Admin wallet address - market creator. Used to show created markets in profile.
+ * Returns SS58 format for comparison with connected wallet.
+ */
+export function getAdminWallet(): string {
+  return ADMIN_WALLET_SS58;
+}
 
 /**
  * Market program id for `Fin.FaucetClaim` / trading. Source of truth is `config/oracle.config.json`.
@@ -49,6 +72,7 @@ export const DIA_API =
  * Check if a wallet address is the admin (market creator)
  */
 export function isAdminWallet(address: string | null): boolean {
-  if (!address || !ADMIN_WALLET) return false;
-  return address.toLowerCase() === ADMIN_WALLET.toLowerCase();
+  const admin = getAdminWallet();
+  if (!address || !admin) return false;
+  return address.toLowerCase() === admin.toLowerCase();
 }

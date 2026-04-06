@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useWallet } from "@/lib/wallet";
 import { useClickOutside } from "@/lib/hooks";
+import { isAdminWallet } from "@/lib/config";
 
 function shortAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -39,7 +40,8 @@ export function Header() {
     finBalance,
     finBalanceError,
     finBalanceLoading,
-    refreshFinBalance
+    refreshFinBalance,
+    isAdmin
   } = useWallet();
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -104,6 +106,15 @@ export function Header() {
               >
                 Faucet
               </Link>
+
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  className="rounded-lg sm:rounded-xl border border-[#1f3b57] bg-[#102033] px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold text-[#f49b22] transition hover:border-[#f49b22] hover:text-[#ffb756]"
+                >
+                  Admin
+                </Link>
+              )}
 
               <div className="flex max-w-full items-center rounded-full border border-[#006f94] bg-[#07131e] px-2 py-1 shadow-[0_0_0_1px_rgba(0,175,220,0.12)_inset]">
                 <Link

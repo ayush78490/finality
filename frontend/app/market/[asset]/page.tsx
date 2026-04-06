@@ -12,9 +12,7 @@ export function generateStaticParams() {
   return MARKETS.map((m) => ({ asset: m.slug }));
 }
 
-type Props = { params: { asset: string } };
-
-export default function MarketPage({ params }: Props) {
+export default function MarketPage({ params }: { params: { asset: string } }) {
   const m = marketBySlug(params.asset);
   if (!m) notFound();
   return (

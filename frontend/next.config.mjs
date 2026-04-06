@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  /** Avoid Windows EISDIR/readlink errors in webpack when resolving `next/dist/pages/*`. */
+  swcMinify: false,
   webpack: (config) => {
     config.resolve.symlinks = false;
     return config;

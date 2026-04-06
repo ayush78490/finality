@@ -7,7 +7,7 @@
  * UI round id advances while old positions remain keyed by the previous id.
  */
 import type { GearApi } from "@gear-js/api";
-import { MARKET_PROGRAM_ID } from "./config";
+import { MARKET_PROGRAM_ID, ADMIN_WALLET } from "./config";
 import { fetchMarketRoundDetail, type MarketRoundDetail } from "./fin-get-round";
 import { fetchUserPosition } from "./fin-position";
 import { MARKETS, type MarketMeta } from "./markets";
@@ -28,6 +28,13 @@ export type ProfileMarketSummary = {
   canTryClaim: boolean;
   outcomeLabel: "UP" | "DOWN" | null;
   error?: string;
+};
+
+export type CreatedMarketInfo = {
+  market: MarketMeta;
+  detail: MarketRoundDetail;
+  roundCount: number;
+  status: "active" | "ended" | "no_round";
 };
 
 function isResolvedWinner(detail: MarketRoundDetail, up: bigint, down: bigint): boolean {
@@ -172,4 +179,36 @@ export async function fetchProfileMarketSummaries(
     if (aHas !== bHas) return aHas ? -1 : 1;
     return a.market.slug.localeCompare(b.market.slug);
   });
+}
+
+export async function fetchCreatedMarkets(api: GearApi): Promise<CreatedMarketInfo[]> {
+  if (!MARKET_PROGRAM_ID || !ADMIN_WALLET) return [];
+
+  const results = await Promise.allSettled(
+    MARKETS.map(async (market) => {
+      const detail = await fetchMarketRoundDetail(api, MARKET_PROGRAM_ID!, market.assetKey, ADMIN_WALLET);
+      let status: CreatedMarketInfo["status"] = "no_round";
+      let roundCount = 0;
+
+      if (detail.kind === "round") {
+        roundCount = parseInt(detail.id, 10);
+        if (detail.phase === "Resolved") {
+          status = "ended";
+        } else if (detail.phase === "Open" || detail.phase === "Locked") {
+          status = "active";
+        }
+      }
+
+      return {
+        market,
+        detail,
+        roundCount,
+        status,
+      };
+    })
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<CreatedMarketInfo> => r.status === "fulfilled")
+    .map((r) => r.value);
 }

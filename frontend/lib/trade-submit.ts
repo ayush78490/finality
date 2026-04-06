@@ -6,6 +6,7 @@ import { FIN_DECIMALS, FIN_PROGRAM_ID, MARKET_PROGRAM_ID } from "./config";
 import {
   encodeFinBuySide,
   encodeFinClaim,
+  encodeFinClaimSeed,
   encodeFinSettleRound,
   encodeVftApprove,
   stringToU8aWithPrefix
@@ -442,5 +443,27 @@ export async function submitClaim(params: {
     payload,
     "Claim",
     gasLimit
+  );
+}
+
+/** After resolution, admin claims back their seed liquidity. */
+export async function submitClaimSeed(params: {
+  api: GearApi;
+  account: string;
+  assetKey: string;
+}): Promise<void> {
+  const { api, account, assetKey } = params;
+  if (!MARKET_PROGRAM_ID) {
+    throw new Error("Market program id is not configured.");
+  }
+
+  const payload = encodeFinClaimSeed(api, assetKey);
+  await sendMessageWithReply(
+    api,
+    MARKET_PROGRAM_ID as `0x${string}`,
+    account,
+    payload,
+    "Claim seed",
+    CLAIM_GAS_FALLBACK
   );
 }

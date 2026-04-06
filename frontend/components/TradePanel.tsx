@@ -99,6 +99,7 @@ export function TradePanel({
 
   const tradePreview = useMemo(() => {
     if (!canTrade) return null;
+    if (roundDetail?.kind !== "round") return null;
     const base = tryFinHumanToBase(finAmount);
     if (base === null || base <= 0n) return null;
     return previewBuySide({

@@ -8,6 +8,11 @@ const CANONICAL_MARKET_PROGRAM_ID = oracleCfg.marketProgramId as string;
 const envMarket = process.env.NEXT_PUBLIC_MARKET_PROGRAM_ID?.trim();
 
 /**
+ * Admin wallet address - market creator. Used to show created markets in profile.
+ */
+export const ADMIN_WALLET = (oracleCfg.adminWallet as string) || "";
+
+/**
  * Market program id for `Fin.FaucetClaim` / trading. Source of truth is `config/oracle.config.json`.
  * A typo in `NEXT_PUBLIC_MARKET_PROGRAM_ID` sends messages to the wrong program (failed txs, red dot in Gear IDEA).
  */
@@ -39,3 +44,11 @@ export const FIN_DECIMALS = 12;
 
 export const DIA_API =
   process.env.NEXT_PUBLIC_DIA_API ?? "https://api.diadata.org";
+
+/**
+ * Check if a wallet address is the admin (market creator)
+ */
+export function isAdminWallet(address: string | null): boolean {
+  if (!address || !ADMIN_WALLET) return false;
+  return address.toLowerCase() === ADMIN_WALLET.toLowerCase();
+}

@@ -67,6 +67,24 @@ export function encodeFinClaim(api: GearApi, assetKey: string): Uint8Array {
   );
 }
 
+/** `Fin.SetPaused(paused)` — check if market is initialized by testing admin function */
+export function encodeFinSetPaused(api: GearApi, paused: boolean): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Fin"),
+    stringToU8aWithPrefix("SetPaused"),
+    api.registry.createType("bool", paused).toU8a()
+  );
+}
+
+/** `Fin.ClaimSeed(asset_key)` — admin claims back their seed liquidity after settlement. */
+export function encodeFinClaimSeed(api: GearApi, assetKey: string): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Fin"),
+    stringToU8aWithPrefix("ClaimSeed"),
+    api.registry.createType("String", assetKey).toU8a()
+  );
+}
+
 /** `Fin.GetPosition` query — same SCALE prefix as handles. */
 export function encodeFinGetPosition(
   api: GearApi,

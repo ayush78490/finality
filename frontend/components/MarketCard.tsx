@@ -88,7 +88,7 @@ export function MarketCard({ market, phase, connected, imageUrl, poolData }: Mar
         </div>
         <div className="min-w-0 flex-1">
           <div className="line-clamp-2 text-sm sm:text-base md:text-lg font-semibold leading-tight text-[#d7e0e8]">
-            What price will {market.label} hit in April?
+             {market.label} 5 minute up or down
           </div>
         </div>
       </div>

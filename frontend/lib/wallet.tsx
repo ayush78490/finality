@@ -11,6 +11,7 @@ import {
 } from "react";
 import { VARA_WS } from "./config";
 import { fetchFinBalance } from "./fin-balance";
+import { isAdminWallet } from "./config";
 
 type GearApiType = import("@gear-js/api").GearApi;
 
@@ -24,6 +25,8 @@ type Ctx = {
   finBalanceLoading: boolean;
   /** Returns formatted balance on success, or null. */
   refreshFinBalance: () => Promise<string | null>;
+  /** Whether the connected wallet is the admin (market creator) */
+  isAdmin: boolean;
 };
 
 const WalletContext = createContext<Ctx | null>(null);
@@ -126,7 +129,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       finBalance,
       finBalanceError,
       finBalanceLoading,
-      refreshFinBalance
+      refreshFinBalance,
+      isAdmin: isAdminWallet(account)
     }),
     [
       api,

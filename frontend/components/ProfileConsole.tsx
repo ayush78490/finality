@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
-import { fetchProfileMarketSummaries, type ProfileMarketSummary } from "@/lib/profile-data";
+import { fetchProfileMarketSummaries, fetchCreatedMarkets, type ProfileMarketSummary, type CreatedMarketInfo } from "@/lib/profile-data";
 import { useWallet } from "@/lib/wallet";
 import { submitClaim } from "@/lib/trade-submit";
 import { getTradedAssetKeys } from "@/lib/traded-markets";
@@ -30,13 +30,15 @@ function phaseLabel(row: ProfileMarketSummary): string {
 }
 
 export function ProfileConsole() {
-  const { account, api, refreshFinBalance } = useWallet();
+  const { account, api, refreshFinBalance, isAdmin } = useWallet();
   const [rows, setRows] = useState<ProfileMarketSummary[] | null>(null);
+  const [createdMarkets, setCreatedMarkets] = useState<CreatedMarketInfo[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [claimingKey, setClaimingKey] = useState<string | null>(null);
   const [claimMsg, setClaimMsg] = useState<Record<string, string>>({});
   const [hasTradedKeys, setHasTradedKeys] = useState<boolean | null>(null);
+  const [activeTab, setActiveTab] = useState<"trades" | "created">("trades");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async (silent = false) => {
@@ -53,6 +55,19 @@ export function ProfileConsole() {
     }
   }, [api, account]);
 
+  const loadCreatedMarkets = useCallback(async (silent = false) => {
+    if (!api || !isAdmin) { setCreatedMarkets(null); return; }
+    if (!silent) setLoading(true);
+    try {
+      const data = await fetchCreatedMarkets(api);
+      setCreatedMarkets(data);
+    } catch (e: unknown) {
+      // Silent fail for created markets
+    } finally {
+      if (!silent) setLoading(false);
+    }
+  }, [api, isAdmin]);
+
   // Check localStorage immediately (synchronous) so we know if user has traded.
   useEffect(() => {
     if (!account || !MARKET_PROGRAM_ID) return;
@@ -68,6 +83,13 @@ export function ProfileConsole() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [load]);
+
+  // Load created markets for admin
+  useEffect(() => {
+    if (isAdmin) {
+      void loadCreatedMarkets();
+    }
+  }, [isAdmin, loadCreatedMarkets]);
 
   const onClaim = async (row: ProfileMarketSummary) => {
     if (!api || !account) return;
@@ -104,20 +126,49 @@ export function ProfileConsole() {
         <div>
           <h1 className="font-display text-2xl sm:text-3xl text-white md:text-4xl">Your profile</h1>
           <p className="mt-2 text-xs sm:text-sm text-mist">
-            All markets you&apos;ve traded. Round updates every 8 seconds — claim winnings while the
-            resolved round is still active on-chain.
+            {isAdmin
+              ? "View your trades and markets you've created. Round updates every 8 seconds."
+              : "All markets you've traded. Round updates every 8 seconds — claim winnings while the resolved round is still active on-chain."}
           </p>
           <p className="mt-1 font-mono text-xs text-mist/50">{shortAddr}</p>
         </div>
         <button
           type="button"
           disabled={loading}
-          onClick={() => void load()}
+          onClick={() => { void load(); if (isAdmin) void loadCreatedMarkets(); }}
           className="w-full sm:w-auto rounded-full border border-line bg-panel px-4 py-2 text-sm text-white hover:border-ember/40 disabled:opacity-40"
         >
           {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
+
+      {/* Admin Tabs */}
+      {isAdmin && (
+        <div className="mt-6 flex gap-2 border-b border-line">
+          <button
+            type="button"
+            onClick={() => setActiveTab("trades")}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "trades"
+                ? "border-b-2 border-ember text-ember"
+                : "text-mist hover:text-white"
+            }`}
+          >
+            My Trades
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("created")}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              activeTab === "created"
+                ? "border-b-2 border-ember text-ember"
+                : "text-mist hover:text-white"
+            }`}
+          >
+            Created Markets
+          </button>
+        </div>
+      )}
 
       {err ? <p className="mt-6 text-sm text-risk">{err}</p> : null}
 
@@ -320,6 +371,74 @@ export function ProfileConsole() {
           <p className="mt-2 text-sm text-mist">
             Your trades are tracked in this browser after a successful buy.
             If you traded from another device, they won&apos;t appear here.
+          </p>
+        </div>
+      ) : null}
+
+      {/* Created Markets (Admin only) */}
+      {activeTab === "created" && createdMarkets && createdMarkets.length > 0 ? (
+        <div className="mt-8 space-y-4">
+          {createdMarkets.map((item) => {
+            const m = item.market;
+            const detail = item.detail;
+            const isActive = item.status === "active";
+            const isEnded = item.status === "ended";
+            const roundId = detail.kind === "round" ? detail.id : null;
+
+            return (
+              <div
+                key={m.slug}
+                className="glass rounded-2xl border border-line/70 p-4 sm:p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-widest text-mist/50">{m.short}</div>
+                    <Link
+                      href={`/market/${m.slug}`}
+                      className="font-display text-lg sm:text-xl text-white hover:text-ember"
+                    >
+                      {m.label}
+                      <span className="ml-2 text-xs sm:text-sm text-mist/60">{m.assetKey}</span>
+                    </Link>
+                  </div>
+
+                  <div className="flex w-full sm:w-auto flex-col items-start sm:items-end gap-1 text-xs">
+                    <span
+                      className={`rounded-full border px-2.5 py-1 font-medium ${
+                        isActive
+                          ? "border-shore/40 bg-shore/15 text-shore"
+                          : isEnded
+                            ? "border-risk/40 bg-risk/15 text-risk"
+                            : "border-line bg-ink/40 text-mist"
+                      }`}
+                    >
+                      {isActive ? "Active" : isEnded ? "Ended" : "No round"}
+                    </span>
+                    {roundId && (
+                      <span className="text-mist/40">Round #{roundId}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-mist/70">
+                  <span>Total Rounds: {item.roundCount}</span>
+                  {detail.kind === "round" && detail.endTs && (
+                    <span>
+                      {isEnded
+                        ? `Ended at ${new Date(detail.endTs).toLocaleTimeString()}`
+                        : `Ends ${new Date(detail.endTs).toLocaleTimeString()}`}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : activeTab === "created" && isAdmin && !loading ? (
+        <div className="mt-10 rounded-2xl border border-line bg-panel/40 p-10 text-center">
+          <p className="text-white">No markets data available</p>
+          <p className="mt-2 text-sm text-mist">
+            Markets will appear here once the relayer starts the first round.
           </p>
         </div>
       ) : null}

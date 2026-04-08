@@ -1,8 +1,118 @@
-// Source of truth: `programs/finality-market/artifacts/finality-market-app.idl` (regenerate with `cargo sails idl` from `programs/finality-market/wasm`).
-// Embedded oracle: `Oracle.add_asset` / `Oracle.submit_round`; market: `Fin.register_asset(asset_key, asset_id)`, `Fin.start_round`, etc.
+type FaucetInfo = struct {
+  amount: u128,
+  cooldown_ms: u64,
+  last_claim_ms: u64,
+  can_claim: bool,
+  next_claim_ms: u64,
+};
+
+type UserPosition = struct {
+  shares_up: u128,
+  shares_down: u128,
+};
+
+type Round = struct {
+  id: u64,
+  start_ts: u64,
+  end_ts: u64,
+  start_price: u128,
+  start_expo: i32,
+  end_price: opt u128,
+  end_expo: opt i32,
+  outcome_up: opt bool,
+  phase: RoundPhase,
+  reserve_up: u128,
+  reserve_down: u128,
+  fee_bps: u16,
+  total_shares_up: u128,
+  total_shares_down: u128,
+  fee_acc: u128,
+  /// Initial per-side seed the admin deposited via `start_round`.
+  seed_per_side: u128,
+  /// Track trader FIN deposited (excludes admin seed) for payout calculation.
+  trader_fin_deposited: u128,
+  /// Remaining FIN in the user-only payout pool for winners (snapshot at settlement).
+  payout_fin_remaining: u128,
+  winning_shares_remaining: u128,
+};
+
+type RoundPhase = enum {
+  Open,
+  Locked,
+  Resolved,
+};
+
+type OracleTick = struct {
+  price: u128,
+  conf: u128,
+  expo: i32,
+  publish_time: u64,
+};
+
+type AssetInfo = struct {
+  id: u32,
+  symbol: str,
+  active: bool,
+};
+
+/// On-chain mirror of AggregatorV3 `getRoundData` fields (price in `answer`).
+type RoundData = struct {
+  round_id: u64,
+  answer: i128,
+  started_at: u64,
+  updated_at: u64,
+  answered_in_round: u64,
+};
 
 constructor {
   Create : ();
 };
 
-// See artifacts IDL for full `Fin` + `Oracle` services.
+service Fin {
+  BuySide : (asset_key: str, side: u8, fin_in: u128, min_shares_out: u128) -> result (null, str);
+  /// Winners redeem FIN pro-rata from the settled pool (one claim per user per round).
+  /// Accounting is updated before the outbound VFT transfer so a failed send reverts the whole message.
+  Claim : (asset_key: str) -> result (null, str);
+  /// Admin claims back their seed liquidity after round is settled.
+  ClaimSeed : (asset_key: str) -> result (null, str);
+  /// Any user calls this to receive FIN from the program's treasury.
+  /// Enforces a per-wallet cooldown (default 24 h).
+  FaucetClaim : () -> result (null, str);
+  /// One-time setup. `FIN_TOKEN_PROGRAM` is fixed — all collateral is this VFT only.
+  Init : (admin: actor_id, round_seconds: u64, oracle_authority: actor_id, max_oracle_age_secs: u64) -> null;
+  RegisterAsset : (asset_key: str, asset_id: u32) -> null;
+  /// Admin sets the per-claim FIN amount and cooldown.  Passing 0 for either
+  /// resets it to the compile-time default (100 FIN / 24 h).
+  SetFaucetConfig : (amount: u128, cooldown_secs: u64) -> null;
+  SetPaused : (paused: bool) -> null;
+  SettleRound : (asset_key: str) -> null;
+  /// Admin seeds both sides; pulls `2 * liquidity_seed` FIN from admin via `transfer_from`.
+  StartRound : (asset_key: str, liquidity_seed: u128, fee_bps: u16) -> result (null, str);
+  query FinToken : () -> actor_id;
+  query GetFaucetInfo : (user: actor_id) -> FaucetInfo;
+  query GetPosition : (asset_key: str, round_id: u64, user: actor_id) -> UserPosition;
+  query GetRound : (asset_key: str) -> opt Round;
+  query GetTick : (asset_id: u32) -> OracleTick;
+  query ListAssets : () -> vec str;
+};
+
+service Oracle {
+  /// Register a new feed (e.g. `BTC` quoted in USDT). Returns `asset_id`.
+  AddAsset : (symbol: str, decimals: u8, description: str) -> result (u32, str);
+  RemoveAsset : (asset_id: u32) -> result (null, str);
+  SetOperator : (new_operator: actor_id) -> result (null, str);
+  /// Operator pushes a new round (call once per market expiry / resolution event).
+  SubmitRound : (asset_id: u32, answer: i128) -> result (u64, str);
+  query Decimals : (asset_id: u32) -> result (u8, str);
+  query Description : (asset_id: u32) -> result (str, str);
+  query GetAssetInfo : (asset_id: u32) -> result (AssetInfo, str);
+  query GetRoundData : (asset_id: u32, round_id: u64) -> result (RoundData, str);
+  query IsFresh : (asset_id: u32, now_unix_secs: u64, max_age_secs: u64) -> result (bool, str);
+  query IsFreshNow : (asset_id: u32, max_age_secs: u64) -> result (bool, str);
+  query LatestAnswer : (asset_id: u32) -> result (i128, str);
+  query LatestRoundData : (asset_id: u32) -> result (RoundData, str);
+  query LatestRoundId : (asset_id: u32) -> result (u64, str);
+  query Operator : () -> actor_id;
+  query Owner : () -> actor_id;
+};
+

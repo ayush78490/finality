@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
 import { useClickOutside } from "@/lib/hooks";
 import { isAdminWallet } from "@/lib/config";
@@ -33,6 +34,8 @@ const TOPICS = [
 const VISIBLE_TOPICS = 9;
 
 export function Header() {
+  const router = useRouter();
+  const pathname = usePathname();
   const {
     account,
     connect,
@@ -46,6 +49,33 @@ export function Header() {
 
   const [isExpanded, setIsExpanded] = useState(false);
   const navRef = useClickOutside(() => setIsExpanded(false));
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+
+  useEffect(() => {
+    const readTopic = () => {
+      if (typeof window === "undefined") return;
+      // Only set topic from URL on home page, otherwise keep null
+      if (pathname !== "/") {
+        setSelectedTopic(null);
+        return;
+      }
+      const next = new URLSearchParams(window.location.search).get("topic") ?? "crypto";
+      setSelectedTopic(next.toLowerCase());
+    };
+    readTopic();
+    window.addEventListener("popstate", readTopic);
+    return () => window.removeEventListener("popstate", readTopic);
+  }, [pathname]);
+
+  const onTopicClick = (topic: string) => {
+    const next = topic.toLowerCase();
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "");
+    params.set("topic", next);
+    const q = params.toString();
+    router.push(pathname === "/" ? `/?${q}` : `/?${q}`);
+    setSelectedTopic(next);
+    setIsExpanded(false);
+  };
 
   const visibleTopics = isExpanded ? TOPICS : TOPICS.slice(0, VISIBLE_TOPICS);
   const hasMore = !isExpanded && TOPICS.length > VISIBLE_TOPICS;
@@ -233,12 +263,13 @@ export function Header() {
         >
           <div className="flex items-center gap-1 overflow-x-auto overflow-visible">
             {visibleTopics.map((topic, i) => {
-              const isActive = topic === "Crypto";
+              const isActive = selectedTopic !== null && selectedTopic === topic.toLowerCase();
               const isDividerAfter = topic === "New";
               return (
                 <div key={topic} className="flex items-center">
                   <button
                     type="button"
+                    onClick={() => onTopicClick(topic)}
                     className={`shrink-0 whitespace-nowrap px-2 font-semibold transition ${
                       isActive
                         ? "text-white"
@@ -291,12 +322,12 @@ export function Header() {
               {isExpanded && (
                 <div className="absolute left-0 top-full z-50 mt-2 min-w-[160px] rounded-lg border border-[#1e2a36] bg-[#111b27] py-1 shadow-lg">
                   {TOPICS.slice(VISIBLE_TOPICS).map((topic) => {
-                    const isActive = topic === "Crypto";
+                    const isActive = selectedTopic !== null && selectedTopic === topic.toLowerCase();
                     return (
                       <button
                         key={topic}
                         type="button"
-                        onClick={() => setIsExpanded(false)}
+                        onClick={() => onTopicClick(topic)}
                         className={`w-full px-4 py-2 text-left font-semibold transition ${
                           isActive
                             ? "bg-[#1a2636] text-white"

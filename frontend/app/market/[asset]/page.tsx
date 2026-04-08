@@ -8,6 +8,11 @@ const MarketConsole = dynamic(
   { ssr: false }
 );
 
+const SportsMarketConsole = dynamic(
+  () => import("@/components/SportsMarketConsole").then((mod) => mod.SportsMarketConsole),
+  { ssr: false }
+);
+
 export function generateStaticParams() {
   return MARKETS.map((m) => ({ asset: m.slug }));
 }
@@ -15,10 +20,11 @@ export function generateStaticParams() {
 export default function MarketPage({ params }: { params: { asset: string } }) {
   const m = marketBySlug(params.asset);
   if (!m) notFound();
+  const isSports = m.assetKey.startsWith("SPORT/");
   return (
     <>
       <Header />
-      <MarketConsole market={m} />
+      {isSports ? <SportsMarketConsole market={m} /> : <MarketConsole market={m} />}
     </>
   );
 }

@@ -594,19 +594,25 @@ async function main() {
       return;
     }
 
-    // Re-check state right before start to avoid racing a newly opened round.
-    const stateBeforeStart = await readRoundState(api, marketId, feed.symbol, admin.address);
-    if (stateBeforeStart === "Open" || stateBeforeStart === "Locked") {
-      console.log(
-        JSON.stringify({
-          level: "info",
-          msg: "start_round_skip_existing_active",
-          symbol: feed.symbol,
-          state: stateBeforeStart,
-        })
-      );
-      clearStartCooldown(feed.symbol);
-      return;
+    // Re-check state right before start to guard against a round that was opened by a
+    // third party while we were sleeping. HOWEVER: if we JUST settled this iteration
+    // (result === "settled"), the settlement tx is confirmed but calculateReply still reads
+    // the pre-finalization block and returns "Open" — causing us to skip start forever.
+    // Skip the re-check in that case; we already know the round is Resolved.
+    if (result !== "settled") {
+      const stateBeforeStart = await readRoundState(api, marketId, feed.symbol, admin.address);
+      if (stateBeforeStart === "Open" || stateBeforeStart === "Locked") {
+        console.log(
+          JSON.stringify({
+            level: "info",
+            msg: "start_round_skip_existing_active",
+            symbol: feed.symbol,
+            state: stateBeforeStart,
+          })
+        );
+        clearStartCooldown(feed.symbol);
+        return;
+      }
     }
 
     // After resolve, immediately start a new round (no delay).

@@ -2,8 +2,8 @@
  * Mirrors `programs/finality-market/app/src/lib.rs` CPAMM + fee for UI previews.
  * `cpamm_shares_out` + `buy_side` flow.
  *
- * Settlement note: winners split the full pool (seed + all user trades) pro-rata by shares.
- * `seed_per_side` is stored for informational display only.
+ * Settlement note: winners split `trader_fin_deposited` only.
+ * Admin seed is returned separately via `ClaimSeed` and is not part of trader payout.
  */
 
 /** Same as contract: k = a*b, new_b = k/(a+fin_eff), shares_out = b - new_b */
@@ -25,21 +25,26 @@ export function cpammSharesOut(
 export type TradePreview = {
   /** Shares minted for this buy (base units). */
   sharesOut: bigint;
-  /** Full pool FIN (reserves) after this buy — this is what winners split. */
+  /** Full pool FIN (reserves) after this buy — for display only. */
   poolAfter: bigint;
+  /** Pool available for traders to win: trader-funded liquidity only. */
+  tradersPoolAfter: bigint;
   /** If this side wins, est. FIN from `Claim` for your full position after trade. */
   expectedClaimFinIfWin: bigint;
   /** Same but only the marginal gain from this trade's shares (excl. rest of wallet). */
   marginalClaimFromThisBuy: bigint;
   /** Reserve of selected side / total pool (0–1). Shows raw AMM odds. */
   sidePoolShareAfter: number;
-  /** Gross mult: poolAfter / sideReserveAfter — actual payout multiplier if winning. */
+  /** Gross mult: poolAfter / sideReserveAfter — for display (includes seed). */
   impliedMult: number;
+  /** Net mult: tradersPoolAfter / sideReserveAfter — actual payout multiplier if winning. */
+  netMult: number;
 };
 
 /**
  * Preview a `Fin.BuySide` given current round state and optional wallet position.
- * Winners split the full pool (seed + all user trades) — `seedPerSide` is for display only.
+ * Winners get: `trader_fin_deposited` only.
+ * Admin seed is returned separately via `ClaimSeed` when the market closes.
  */
 export function previewBuySide(params: {
   side: "up" | "down";
@@ -51,8 +56,10 @@ export function previewBuySide(params: {
   totalSharesDown: bigint;
   userSharesUp: bigint;
   userSharesDown: bigint;
-  /** Admin's per-side seed (informational only — included in winner payouts). */
+  /** Admin's per-side seed — used to determine winning side seed to exclude. */
   seedPerSide: bigint;
+  /** Total trader funds deposited — used directly for payout calculations. */
+  traderFinDeposited: bigint;
 }): TradePreview | null {
   const {
     side,
@@ -64,6 +71,8 @@ export function previewBuySide(params: {
     totalSharesDown,
     userSharesUp,
     userSharesDown,
+    seedPerSide,
+    traderFinDeposited,
   } = params;
 
   if (finInBase <= 0n) return null;
@@ -97,6 +106,22 @@ export function previewBuySide(params: {
   }
 
   const poolAfter = newReserveUp + newReserveDown;
+  // On-chain claimable pool is the trader-funded pool only.
+  // When traderFinDeposited is 0, the correct payout is 0.
+  const tradersPoolAfter = traderFinDeposited;
+
+  if (tradersPoolAfter === 0n) {
+    return {
+      sharesOut,
+      poolAfter,
+      tradersPoolAfter,
+      expectedClaimFinIfWin: 0n,
+      marginalClaimFromThisBuy: 0n,
+      sidePoolShareAfter: side === "up" ? Number(newReserveUp) / Number(poolAfter) : Number(newReserveDown) / Number(poolAfter),
+      impliedMult: side === "up" ? (newReserveUp === 0n ? 0 : Number(poolAfter) / Number(newReserveUp)) : (newReserveDown === 0n ? 0 : Number(poolAfter) / Number(newReserveDown)),
+      netMult: 0,
+    };
+  }
 
   const totalUpAfter = totalSharesUp + (side === "up" ? sharesOut : 0n);
   const totalDownAfter = totalSharesDown + (side === "down" ? sharesOut : 0n);
@@ -106,38 +131,46 @@ export function previewBuySide(params: {
 
   if (side === "up") {
     if (totalUpAfter === 0n) return null;
-    const expectedClaimFinIfWin = (poolAfter * userUpAfter) / totalUpAfter;
-    const marginalClaimFromThisBuy = (poolAfter * sharesOut) / totalUpAfter;
+    const expectedClaimFinIfWin = (tradersPoolAfter * userUpAfter) / totalUpAfter;
+    const marginalClaimFromThisBuy = (tradersPoolAfter * sharesOut) / totalUpAfter;
     const sideRes = newReserveUp;
     const sidePoolShareAfter =
       poolAfter === 0n ? 0 : Number(sideRes) / Number(poolAfter);
     const impliedMult =
       sideRes === 0n ? 0 : Number(poolAfter) / Number(sideRes);
+    const netMult =
+      sideRes === 0n ? 0 : Number(tradersPoolAfter) / Number(sideRes);
     return {
       sharesOut,
       poolAfter,
+      tradersPoolAfter,
       expectedClaimFinIfWin,
       marginalClaimFromThisBuy,
       sidePoolShareAfter,
       impliedMult,
+      netMult,
     };
   }
 
   if (totalDownAfter === 0n) return null;
-  const expectedClaimFinIfWin = (poolAfter * userDownAfter) / totalDownAfter;
-  const marginalClaimFromThisBuy = (poolAfter * sharesOut) / totalDownAfter;
+  const expectedClaimFinIfWin = (tradersPoolAfter * userDownAfter) / totalDownAfter;
+  const marginalClaimFromThisBuy = (tradersPoolAfter * sharesOut) / totalDownAfter;
   const sideRes = newReserveDown;
   const sidePoolShareAfter =
     poolAfter === 0n ? 0 : Number(sideRes) / Number(poolAfter);
   const impliedMult =
     sideRes === 0n ? 0 : Number(poolAfter) / Number(sideRes);
+  const netMult =
+    sideRes === 0n ? 0 : Number(tradersPoolAfter) / Number(sideRes);
   return {
     sharesOut,
     poolAfter,
+    tradersPoolAfter,
     expectedClaimFinIfWin,
     marginalClaimFromThisBuy,
     sidePoolShareAfter,
     impliedMult,
+    netMult,
   };
 }
 

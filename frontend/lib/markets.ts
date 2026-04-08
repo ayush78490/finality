@@ -13,6 +13,69 @@ export type MarketMeta = {
   accent: "ember" | "shore" | "risk" | "mist";
 };
 
+const ACCENTS: MarketMeta["accent"][] = ["ember", "shore", "risk", "mist"];
+
+function pickAccent(seed: string): MarketMeta["accent"] {
+  let sum = 0;
+  for (let i = 0; i < seed.length; i++) sum += seed.charCodeAt(i);
+  return ACCENTS[sum % ACCENTS.length] ?? "ember";
+}
+
+function toHex(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
+function fromHex(hex: string): string | null {
+  if (!hex || hex.length % 2 !== 0 || /[^0-9a-f]/i.test(hex)) return null;
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = Number.parseInt(hex.slice(i, i + 2), 16);
+  }
+  try {
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+export function assetKeyToSlug(assetKey: string): string {
+  return `ak-${toHex(assetKey)}`;
+}
+
+export function slugToAssetKey(slug: string): string | null {
+  if (!slug.startsWith("ak-")) return null;
+  return fromHex(slug.slice(3));
+}
+
+export function marketFromAssetKey(assetKey: string): MarketMeta {
+  const known = MARKETS.find((m) => m.assetKey === assetKey);
+  if (known) return known;
+
+  const base = assetKey.split("/")[0]?.trim() || assetKey;
+  const short = base.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "MKT";
+  return {
+    slug: assetKeyToSlug(assetKey),
+    label: short,
+    short,
+    assetId: -1,
+    diaSymbol: short,
+    assetKey,
+    accent: pickAccent(assetKey),
+  };
+}
+
+export function mergeMarketsWithAssetKeys(assetKeys: string[]): MarketMeta[] {
+  const byKey = new Map<string, MarketMeta>();
+  for (const m of MARKETS) byKey.set(m.assetKey, m);
+  for (const key of assetKeys) {
+    if (!byKey.has(key)) byKey.set(key, marketFromAssetKey(key));
+  }
+  return [...byKey.values()];
+}
+
 // assetId order matches `Oracle.add_asset` then `Fin.register_asset` in bootstrap (0..n-1 on a fresh program).
 export const MARKETS: MarketMeta[] = [
   { slug: "btc", label: "Bitcoin", short: "BTC", diaSymbol: "BTC", assetId: 0, assetKey: "BTC/USD", accent: "ember" },
@@ -48,5 +111,9 @@ export const MARKETS: MarketMeta[] = [
 ];
 
 export function marketBySlug(slug: string) {
-  return MARKETS.find((m) => m.slug === slug);
+  const known = MARKETS.find((m) => m.slug === slug);
+  if (known) return known;
+  const assetKey = slugToAssetKey(slug);
+  if (!assetKey) return undefined;
+  return marketFromAssetKey(assetKey);
 }

@@ -27,9 +27,11 @@ type Round = struct {
   total_shares_up: u128,
   total_shares_down: u128,
   fee_acc: u128,
-  /// Initial per-side seed the admin deposited via `start_round` (informational only).
+  /// Initial per-side seed the admin deposited via `start_round`.
   seed_per_side: u128,
-  /// Remaining FIN (full pool = seed + user trades) for winners to claim (snapshot at settlement).
+  /// Track trader FIN deposited (excludes admin seed) for payout calculation.
+  trader_fin_deposited: u128,
+  /// Remaining FIN in the user-only payout pool for winners (snapshot at settlement).
   payout_fin_remaining: u128,
   winning_shares_remaining: u128,
 };
@@ -71,6 +73,8 @@ service Fin {
   /// Winners redeem FIN pro-rata from the settled pool (one claim per user per round).
   /// Accounting is updated before the outbound VFT transfer so a failed send reverts the whole message.
   Claim : (asset_key: str) -> result (null, str);
+  /// Admin claims back their seed liquidity after round is settled.
+  ClaimSeed : (asset_key: str) -> result (null, str);
   /// Any user calls this to receive FIN from the program's treasury.
   /// Enforces a per-wallet cooldown (default 24 h).
   FaucetClaim : () -> result (null, str);

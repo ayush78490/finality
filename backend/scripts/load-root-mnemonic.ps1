@@ -1,6 +1,6 @@
 # Loads DEPLOYER_MNEMONIC from repo root .env into RELAYER_MNEMONIC / BOOTSTRAP_MNEMONIC.
 # Usage (from repo root): . .\scripts\load-root-mnemonic.ps1
-$root = Resolve-Path (Join-Path $PSScriptRoot "..")
+$root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $envPath = Join-Path $root ".env"
 if (-not (Test-Path $envPath)) { throw "Missing $envPath" }
 Get-Content $envPath | ForEach-Object {

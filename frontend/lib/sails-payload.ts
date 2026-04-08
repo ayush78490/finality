@@ -21,6 +21,75 @@ export function encodeVftApprove(
   return u8aConcat(a, b, spender, value);
 }
 
+/** `Oracle.AddAsset(symbol, decimals, description)` — admin registers oracle feed symbol. */
+export function encodeOracleAddAsset(
+  api: GearApi,
+  symbol: string,
+  decimals: number,
+  description: string
+): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Oracle"),
+    stringToU8aWithPrefix("AddAsset"),
+    api.registry.createType("String", symbol).toU8a(),
+    api.registry.createType("u8", decimals).toU8a(),
+    api.registry.createType("String", description).toU8a()
+  );
+}
+
+/** `Oracle.SubmitRound(asset_id, answer)` — operator pushes price/tick. */
+export function encodeOracleSubmitRound(
+  api: GearApi,
+  assetId: number,
+  answer: bigint | number | string
+): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Oracle"),
+    stringToU8aWithPrefix("SubmitRound"),
+    api.registry.createType("u32", assetId).toU8a(),
+    api.registry.createType("i128", answer).toU8a()
+  );
+}
+
+/** `Fin.RegisterAsset(asset_key, asset_id)` — admin links market asset key to oracle asset id. */
+export function encodeFinRegisterAsset(
+  api: GearApi,
+  assetKey: string,
+  assetId: number
+): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Fin"),
+    stringToU8aWithPrefix("RegisterAsset"),
+    api.registry.createType("String", assetKey).toU8a(),
+    api.registry.createType("u32", assetId).toU8a()
+  );
+}
+
+/** `Fin.StartRound(asset_key, liquidity_seed, fee_bps)` — admin starts tradable round. */
+export function encodeFinStartRound(
+  api: GearApi,
+  assetKey: string,
+  seed: bigint,
+  feeBps: number
+): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Fin"),
+    stringToU8aWithPrefix("StartRound"),
+    api.registry.createType("String", assetKey).toU8a(),
+    api.registry.createType("u128", seed).toU8a(),
+    api.registry.createType("u16", feeBps).toU8a()
+  );
+}
+
+/** `Fin.ListAssets()` query payload. */
+export function encodeFinListAssets(): Uint8Array {
+  return u8aConcat(stringToU8aWithPrefix("Fin"), stringToU8aWithPrefix("ListAssets"));
+}
+
+export function finListAssetsReplyPrefixLen(): number {
+  return stringToU8aWithPrefix("Fin").length + stringToU8aWithPrefix("ListAssets").length;
+}
+
 /** `Fin.FaucetClaim()` — no arguments, the program uses msg::source(). */
 export function encodeFinFaucetClaim(): Uint8Array {
   const a = stringToU8aWithPrefix("Fin");

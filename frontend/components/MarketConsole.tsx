@@ -427,6 +427,7 @@ export function MarketConsole({ market }: Props) {
       userSharesUp: userPosition?.sharesUp ?? 0n,
       userSharesDown: userPosition?.sharesDown ?? 0n,
       seedPerSide: roundDetail.seedPerSide ?? 0n,
+      traderFinDeposited: roundDetail.traderFinDeposited ?? 0n,
     });
   }, [
     roundDetail,
@@ -888,8 +889,26 @@ export function MarketConsole({ market }: Props) {
           userPosition={userPosition}
           viewMode={viewMode}
           refreshFinBalance={refreshFinBalance}
-          onBuySuccess={() => {
+          onBuySuccess={async () => {
             loadTrades();
+            // Force immediate and faster polling to refresh round data after trade
+            const doFetch = () => {
+              if (api && MARKET_PROGRAM_ID && account) {
+                fetchMarketRoundDetail(api, MARKET_PROGRAM_ID, market.assetKey, account)
+                  .then((data) => {
+                    setRoundDetail(data);
+                    // Force a re-render by triggering state change
+                    setWallTimeLeftSec((prev) => prev + 1);
+                  })
+                  .catch(() => {});
+              }
+            };
+            // Multiple immediate fetches at increasing intervals
+            doFetch();
+            setTimeout(doFetch, 500);
+            setTimeout(doFetch, 1000);
+            setTimeout(doFetch, 2000);
+            setTimeout(doFetch, 3500);
             return Promise.resolve();
           }}
         />

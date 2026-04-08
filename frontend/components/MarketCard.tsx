@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { phaseBadgeLabel, type MarketRoundSnapshot } from "@/lib/fin-get-round";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
-import { MARKETS } from "@/lib/markets";
+import type { MarketMeta } from "@/lib/markets";
 
 const COIN_ICONS: Record<string, string> = {
   btc: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
@@ -24,16 +24,28 @@ export interface PoolData {
   oddsDown: string;
 }
 
+export interface SportsCardData {
+  fixtureId: number;
+  homeName: string;
+  awayName: string;
+  homeLogo?: string;
+  awayLogo?: string;
+  leagueName?: string;
+  startingAt?: string;
+}
+
 interface MarketCardProps {
-  market: (typeof MARKETS)[number];
+  market: MarketMeta;
   phase: MarketRoundSnapshot | "error" | undefined;
   connected: boolean;
   imageUrl?: string;
   poolData?: PoolData;
+  sportsData?: SportsCardData;
 }
 
-export function MarketCard({ market, phase, connected, imageUrl, poolData }: MarketCardProps) {
+export function MarketCard({ market, phase, connected, imageUrl, poolData, sportsData }: MarketCardProps) {
   const displayImage = imageUrl || COIN_ICONS[market.slug];
+  const isSports = market.assetKey.startsWith("SPORT/") && !!sportsData;
   const phaseText =
     !connected || !MARKET_PROGRAM_ID
       ? "CONNECT"
@@ -67,6 +79,90 @@ export function MarketCard({ market, phase, connected, imageUrl, poolData }: Mar
   const upLine = poolData ? `\u2191 ${poolData.oddsUp}x` : "\u2191 --";
   const downLine = poolData ? `\u2193 ${poolData.oddsDown}x` : "\u2193 --";
   const volumeLine = poolData ? `${formatAmount(poolData.totalLiquidity)} FIN Vol.` : "-- Vol.";
+
+  const shortTeam = (name: string) => {
+    const clean = name.trim();
+    if (!clean) return "TEAM";
+    return clean.length > 14 ? `${clean.slice(0, 14)}...` : clean;
+  };
+
+  if (isSports && sportsData) {
+    const start = sportsData.startingAt ? new Date(sportsData.startingAt) : null;
+    const homeMarker = upPct >= downPct ? "1" : "0";
+    const awayMarker = upPct >= downPct ? "0" : "1";
+
+    return (
+      <Link
+        href={`/market/${market.slug}`}
+        className="group relative flex min-h-[190px] flex-col rounded-2xl border border-[#2a394a] bg-[linear-gradient(180deg,#1b2734_0%,#161f2b_100%)] p-3 sm:p-4 transition hover:-translate-y-0.5 hover:border-[#3d5169]"
+      >
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              {sportsData.homeLogo ? (
+                <img src={sportsData.homeLogo} alt={sportsData.homeName} className="h-5 w-5 rounded-sm object-cover" />
+              ) : (
+                <div className="h-5 w-5 rounded-sm bg-[#2b3a4b]" />
+              )}
+              <span className="text-lg leading-none text-[#dce7f3]">{homeMarker}</span>
+              <span className="truncate text-xl sm:text-2xl font-semibold leading-none text-[#eff5fd]">{shortTeam(sportsData.homeName).toUpperCase()}</span>
+            </div>
+            <span className="text-2xl sm:text-3xl font-semibold leading-none text-[#eff5fd]">{upPct}%</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              {sportsData.awayLogo ? (
+                <img src={sportsData.awayLogo} alt={sportsData.awayName} className="h-5 w-5 rounded-sm object-cover" />
+              ) : (
+                <div className="h-5 w-5 rounded-sm bg-[#2b3a4b]" />
+              )}
+              <span className="text-lg leading-none text-[#dce7f3]">{awayMarker}</span>
+              <span className="truncate text-xl sm:text-2xl font-semibold leading-none text-[#eff5fd]">{shortTeam(sportsData.awayName).toUpperCase()}</span>
+            </div>
+            <span className="text-2xl sm:text-3xl font-semibold leading-none text-[#eff5fd]">{downPct}%</span>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-[#194b6a] px-2 py-1.5 text-center text-xs sm:text-sm font-semibold leading-none tracking-tight text-[#18d2ff]">
+            {shortTeam(sportsData.homeName).toUpperCase()}
+          </div>
+          <div className="rounded-xl bg-[#5b1f2f] px-2 py-1.5 text-center text-xs sm:text-sm font-semibold leading-none tracking-tight text-[#ff2953]">
+            {shortTeam(sportsData.awayName).toUpperCase()}
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs sm:text-sm">
+          <div className="flex min-w-0 items-center gap-2 text-[#8ea1b4]">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#ff3f45]" />
+            <span className="truncate text-[#d6e0ec]">Game {sportsData.fixtureId}</span>
+            <span className="truncate font-semibold text-[#7f91a7]">{volumeLine}</span>
+            <span className="truncate text-[#7f91a7]">{sportsData.leagueName ?? "SPORT"}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[#92a6ba]">
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+              <path d="M6 8h12l-1.5 11h-9z" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M9 8V6a3 3 0 0 1 6 0v2" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" aria-hidden="true">
+              <path d="M6 4h12v16l-6-4-6 4z" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          </div>
+        </div>
+
+        {start ? (
+          <div className="mt-1 text-xs text-[#7f91a7]">
+            {start.toLocaleDateString()} {start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </div>
+        ) : null}
+
+        <div className="pointer-events-none absolute bottom-2 right-2 rounded-full border border-[#2a3b4b] bg-[#111b25] px-2 py-0.5 text-[9px] font-semibold text-[#8ea3b7]">
+          {phaseText}
+        </div>
+      </Link>
+    );
+  }
 
   return (
     <Link

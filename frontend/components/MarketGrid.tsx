@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { fetchAllMarketRoundSnapshots, fetchAllMarketRoundDetails, type MarketRoundSnapshot, type MarketRoundDetail } from "@/lib/fin-get-round";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
-import { MARKETS } from "@/lib/markets";
+import { MARKETS, type MarketMeta } from "@/lib/markets";
 import { useWallet } from "@/lib/wallet";
-import { MarketCard, type PoolData } from "@/components/MarketCard";
+import { MarketCard, type PoolData, type SportsCardData } from "@/components/MarketCard";
 import { binanceSymbolForMarket, fetchHistoricalKlines, type Kline } from "@/lib/binance";
+import { fetchTradableMarkets } from "@/lib/market-discovery";
 
 const COIN_ICONS: Record<string, string> = {
   btc: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
@@ -109,11 +111,122 @@ function computePoolData(detail: MarketRoundDetail | "error" | undefined): PoolD
 
 type PhaseMap = Record<string, MarketRoundSnapshot | "error">;
 type DetailMap = Record<string, MarketRoundDetail | "error">;
+type SportsMap = Record<string, SportsCardData>;
+
+type ApiParticipant = {
+  name?: string;
+  image_path?: string;
+  meta?: { location?: "home" | "away" };
+};
+
+type ApiFixture = {
+  id: number;
+  starting_at?: string;
+  league?: { name?: string };
+  participants?: ApiParticipant[];
+};
+
+function sportFixtureId(assetKey: string): number | null {
+  const m = assetKey.match(/^SPORT\/(\d+)\//i);
+  if (!m?.[1]) return null;
+  const id = Number(m[1]);
+  return Number.isFinite(id) ? id : null;
+}
 
 export function MarketGrid() {
+  const searchParams = useSearchParams();
   const { api, account } = useWallet();
+  const [markets, setMarkets] = useState<MarketMeta[]>(MARKETS);
   const [phases, setPhases] = useState<PhaseMap>({});
   const [details, setDetails] = useState<DetailMap>({});
+  const [sportsBySlug, setSportsBySlug] = useState<SportsMap>({});
+
+  const displayMarkets = useMemo(() => {
+    const topic = (searchParams.get("topic") ?? "crypto").toLowerCase();
+    const isSportsTopic = topic === "sports" || topic === "esports";
+    if (isSportsTopic) {
+      return markets.filter((m) => m.assetKey.startsWith("SPORT/"));
+    }
+    return markets;
+  }, [markets, searchParams]);
+
+  useEffect(() => {
+    if (!api || !MARKET_PROGRAM_ID) {
+      setMarkets(MARKETS);
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const discovered = await fetchTradableMarkets(api, MARKET_PROGRAM_ID, account);
+        if (!cancelled) setMarkets(discovered.length ? discovered : MARKETS);
+      } catch {
+        if (!cancelled) setMarkets(MARKETS);
+      }
+    };
+    void run();
+    const id = window.setInterval(() => void run(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [api, account]);
+
+  useEffect(() => {
+    const sportTargets = markets
+      .map((m) => ({ slug: m.slug, id: sportFixtureId(m.assetKey) }))
+      .filter((m): m is { slug: string; id: number } => m.id !== null);
+
+    if (sportTargets.length === 0) {
+      setSportsBySlug({});
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const ids = sportTargets.map((m) => m.id).join(",");
+        const res = await fetch(`/api/fixtures?ids=${encodeURIComponent(ids)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+
+        const data = (await res.json()) as { fixtures?: ApiFixture[] };
+        const fixtures = Array.isArray(data.fixtures) ? data.fixtures : [];
+        const fixtureById = new Map<number, ApiFixture>();
+        for (const f of fixtures) fixtureById.set(f.id, f);
+
+        const next: SportsMap = {};
+        for (const target of sportTargets) {
+          const fx = fixtureById.get(target.id);
+          if (!fx) continue;
+
+          const home = fx.participants?.find((p) => p.meta?.location === "home");
+          const away = fx.participants?.find((p) => p.meta?.location === "away");
+          next[target.slug] = {
+            fixtureId: fx.id,
+            homeName: home?.name ?? "HOME",
+            awayName: away?.name ?? "AWAY",
+            homeLogo: home?.image_path,
+            awayLogo: away?.image_path,
+            leagueName: fx.league?.name,
+            startingAt: fx.starting_at,
+          };
+        }
+
+        if (!cancelled) setSportsBySlug(next);
+      } catch {
+        if (!cancelled) setSportsBySlug({});
+      }
+    };
+
+    void run();
+    const id = window.setInterval(() => void run(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [markets]);
 
   useEffect(() => {
     if (!api || !MARKET_PROGRAM_ID) {
@@ -125,16 +238,16 @@ export function MarketGrid() {
     
     const run = async () => {
       try {
-        console.log('[MarketGrid] Fetching round data for markets:', MARKETS.map(m => m.slug));
+        console.log('[MarketGrid] Fetching round data for markets:', markets.map(m => m.slug));
         const [nextPhases, nextDetails] = await Promise.all([
-          fetchAllMarketRoundSnapshots(api, MARKET_PROGRAM_ID, MARKETS, account),
-          fetchAllMarketRoundDetails(api, MARKET_PROGRAM_ID, MARKETS, account)
+          fetchAllMarketRoundSnapshots(api, MARKET_PROGRAM_ID, markets, account),
+          fetchAllMarketRoundDetails(api, MARKET_PROGRAM_ID, markets, account)
         ]);
         console.log('[MarketGrid] Fetched phases:', nextPhases);
         console.log('[MarketGrid] Fetched details keys:', Object.keys(nextDetails));
         
         // Log each market's phase and id for debugging
-        for (const m of MARKETS) {
+        for (const m of markets) {
           const phase = nextPhases[m.slug];
           const detail = nextDetails[m.slug];
           if (phase && phase !== "error" && phase.kind === "round") {
@@ -165,12 +278,12 @@ export function MarketGrid() {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [api, account]);
+  }, [api, account, markets]);
 
   return (
     <section className="mx-auto max-w-6xl px-2 sm:px-4 pb-8 sm:pb-12 md:pb-16 pt-4 sm:pt-6 md:pt-8">
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {MARKETS.map((m) => (
+        {displayMarkets.map((m) => (
           <MarketCard
             key={m.slug}
             market={m}
@@ -178,6 +291,7 @@ export function MarketGrid() {
             connected={!!api && !!MARKET_PROGRAM_ID}
             imageUrl={COIN_ICONS[m.slug]}
             poolData={computePoolData(details[m.slug])}
+            sportsData={sportsBySlug[m.slug]}
           />
         ))}
       </div>

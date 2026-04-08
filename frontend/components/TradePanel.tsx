@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { MarketRoundDetail } from "@/lib/fin-get-round";
+import { fetchMarketRoundDetail } from "@/lib/fin-get-round";
 import type { MarketMeta } from "@/lib/markets";
 import { previewBuySide, finBaseToShortHuman } from "@/lib/amm-trade-preview";
 import { finHumanToBaseUnits } from "@/lib/trade-submit";
@@ -24,6 +25,48 @@ function formatFinUpTo3(value: number): string {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+function roundStateChanged(before: MarketRoundDetail | null, after: MarketRoundDetail): boolean {
+  if (!before) return after.kind === "round";
+  if (before.kind !== "round") return after.kind === "round";
+  if (after.kind !== "round") return true;
+  
+  const changed = (
+    before.id !== after.id ||
+    before.phase !== after.phase ||
+    before.reserveUp !== after.reserveUp ||
+    before.reserveDown !== after.reserveDown ||
+    before.totalSharesUp !== after.totalSharesUp ||
+    before.totalSharesDown !== after.totalSharesDown ||
+    before.traderFinDeposited !== after.traderFinDeposited
+  );
+  if (!changed) {
+    console.log('[DEBUG] roundStateChanged: no change detected', {
+      before: { 
+        id: before.id, 
+        reserveUp: before.reserveUp?.toString(), 
+        reserveDown: before.reserveDown?.toString(),
+        totalSharesUp: before.totalSharesUp?.toString(),
+        totalSharesDown: before.totalSharesDown?.toString(),
+        traderFinDeposited: before.traderFinDeposited?.toString()
+      },
+      after: { 
+        id: after.id, 
+        reserveUp: after.reserveUp?.toString(), 
+        reserveDown: after.reserveDown?.toString(),
+        totalSharesUp: after.totalSharesUp?.toString(),
+        totalSharesDown: after.totalSharesDown?.toString(),
+        traderFinDeposited: after.traderFinDeposited?.toString()
+      }
+    });
+  }
+  return changed;
+}
+
 type PoolOdds = {
   upPct: number;
   downPct: number;
@@ -32,6 +75,8 @@ type PoolOdds = {
   totalFin: number;
   multUp: number;
   multDown: number;
+  netMultUp: number;
+  netMultDown: number;
 };
 
 type Props = {
@@ -41,6 +86,8 @@ type Props = {
   viewMode: "live" | "history";
   onBuySuccess?: () => void | Promise<void>;
   refreshFinBalance: () => Promise<string | null>;
+  /** Team names for sports markets - displays instead of "Up/Down" */
+  teamNames?: { home: string; away: string } | null;
 };
 
 const FIN_DEC = 1_000_000_000_000;
@@ -52,6 +99,7 @@ export function TradePanel({
   viewMode,
   onBuySuccess,
   refreshFinBalance,
+  teamNames,
 }: Props) {
   const { account, api } = useWallet();
   const [side, setSide] = useState<"up" | "down">("up");
@@ -62,7 +110,7 @@ export function TradePanel({
 
   const poolOdds = useMemo((): PoolOdds | null => {
     if (roundDetail?.kind !== "round") return null;
-    const { reserveUp, reserveDown, seedPerSide } = roundDetail;
+    const { reserveUp, reserveDown, seedPerSide, traderFinDeposited } = roundDetail;
     const total = reserveUp + reserveDown;
     if (total === 0n) return null;
     const upPct = Math.round(Number(reserveUp * 10000n / total) / 100);
@@ -72,7 +120,11 @@ export function TradePanel({
     const totalFin = Number(total) / FIN_DEC;
     const multUp = upFin > 0 ? totalFin / upFin : 0;
     const multDown = downFin > 0 ? totalFin / downFin : 0;
-    return { upPct, downPct, upFin, downFin, totalFin, multUp, multDown };
+    // Traders can only win from traderFinDeposited (excludes admin seed)
+    const tradersPoolFin = Number(traderFinDeposited) / FIN_DEC;
+    const netMultUp = upFin > 0 && tradersPoolFin > 0 ? tradersPoolFin / upFin : 0;
+    const netMultDown = downFin > 0 && tradersPoolFin > 0 ? tradersPoolFin / downFin : 0;
+    return { upPct, downPct, upFin, downFin, totalFin, multUp, multDown, netMultUp, netMultDown };
   }, [roundDetail]);
 
   const isStaleRound = useMemo(() => {
@@ -113,6 +165,7 @@ export function TradePanel({
       userSharesUp: userPosition?.sharesUp ?? 0n,
       userSharesDown: userPosition?.sharesDown ?? 0n,
       seedPerSide: roundDetail.seedPerSide ?? 0n,
+      traderFinDeposited: roundDetail.traderFinDeposited ?? 0n,
     });
   }, [roundDetail, side, finAmount, userPosition, canTrade]);
 
@@ -120,7 +173,7 @@ export function TradePanel({
     if (roundDetail?.kind !== "round") return "No active round";
     const r = roundDetail;
     if (r.phase === "Resolved" && r.outcomeUp !== null) {
-      return r.outcomeUp ? "UP Won" : "DOWN Won";
+      return r.outcomeUp ? (teamNames?.home ? `${teamNames.home} Won` : "UP Won") : (teamNames?.away ? `${teamNames.away} Won` : "DOWN Won");
     }
     if (r.phase === "Locked") return "Settling...";
     if (r.phase === "Open") {
@@ -128,7 +181,7 @@ export function TradePanel({
       return "Open";
     }
     return r.phase;
-  }, [roundDetail]);
+  }, [roundDetail, teamNames]);
 
   const onBuy = useCallback(async () => {
     setTxError(null);
@@ -152,7 +205,7 @@ export function TradePanel({
     }
     setTxPending(true);
     try {
-      await submitBuySide({
+      const submitResult = await submitBuySide({
         api,
         account,
         assetKey: market.assetKey,
@@ -161,10 +214,14 @@ export function TradePanel({
         minSharesOut: 1n,
         roundId: roundDetail?.kind === "round" ? roundDetail.id : undefined,
       });
-      setTxOk(`${finAmount} FIN committed ${side.toUpperCase()}`);
-      await new Promise((r) => setTimeout(r, 3000));
+
+      const txHint = submitResult.buyTxHash
+        ? ` Tx ${submitResult.buyTxHash.slice(0, 12)}...`
+        : "";
+      setTxOk(`${finAmount} FIN committed ${side.toUpperCase()}${txHint}`);
       await refreshFinBalance();
-      onBuySuccess?.();
+      await onBuySuccess?.();
+      setFinAmount(finAmount);
     } catch (e: unknown) {
       setTxError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -188,7 +245,7 @@ export function TradePanel({
     }
     const amount = Number.parseFloat(finAmount || "0");
     if (!Number.isFinite(amount) || amount <= 0 || !poolOdds) return null;
-    const mult = side === "up" ? poolOdds.multUp : poolOdds.multDown;
+    const mult = side === "up" ? poolOdds.netMultUp : poolOdds.netMultDown;
     if (!Number.isFinite(mult) || mult <= 0) return null;
     return formatFinUpTo3(amount * mult);
   }, [tradePreview, finAmount, poolOdds, side]);
@@ -219,7 +276,7 @@ export function TradePanel({
         <div className="text-sm font-semibold text-white">{onChainStatusLabel}</div>
         {roundDetail?.kind === "round" && userPosition && (
           <div className="text-[10px] text-[#6f8296] mt-1 font-mono">
-            UP: {userPosition.sharesUp.toString()} · DOWN: {userPosition.sharesDown.toString()}
+            {teamNames ? `${teamNames.home}: ${userPosition.sharesUp.toString()} · ${teamNames.away}: ${userPosition.sharesDown.toString()}` : `UP: ${userPosition.sharesUp.toString()} · DOWN: ${userPosition.sharesDown.toString()}`}
           </div>
         )}
       </div>
@@ -234,7 +291,7 @@ export function TradePanel({
               : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
           }`}
         >
-          <div>Up {poolOdds ? `${poolOdds.upPct}%` : "--"}</div>
+          <div>{teamNames?.home ?? "Up"} {poolOdds ? `${poolOdds.upPct}%` : "--"}</div>
           {poolOdds && (
             <div className="mt-0.5 text-[11px] font-normal opacity-80">{poolOdds.upFin.toFixed(2)} FIN</div>
           )}
@@ -248,7 +305,7 @@ export function TradePanel({
               : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
           }`}
         >
-          <div>Down {poolOdds ? `${poolOdds.downPct}%` : "--"}</div>
+          <div>{teamNames?.away ?? "Down"} {poolOdds ? `${poolOdds.downPct}%` : "--"}</div>
           {poolOdds && (
             <div className="mt-0.5 text-[11px] font-normal opacity-80">{poolOdds.downFin.toFixed(2)} FIN</div>
           )}
@@ -311,7 +368,7 @@ export function TradePanel({
             </div>
             <div className="flex justify-between">
               <span>Win ×</span>
-              <span className="font-mono text-white">×{tradePreview.impliedMult.toFixed(2)}</span>
+              <span className="font-mono text-white">×{tradePreview.netMult.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span>Shares</span>

@@ -1,7 +1,7 @@
 import deployed from "../../config/deployed.token.json";
 import oracleCfg from "../../config/oracle.config.json";
 import { Keyring } from "@polkadot/keyring";
-import { encodeAddress } from "@polkadot/util-crypto";
+import { decodeAddress, encodeAddress } from "@polkadot/util-crypto";
 
 export const VARA_WS =
   process.env.NEXT_PUBLIC_VARA_WS ?? "wss://testnet.vara.network";
@@ -15,14 +15,19 @@ const envMarket = process.env.NEXT_PUBLIC_MARKET_PROGRAM_ID?.trim();
  */
 const ADMIN_WALLET_RAW = oracleCfg.adminWallet as string;
 
-function getAdminWalletSS58(): string {
-  if (!ADMIN_WALLET_RAW) return "";
+const VARA_SS58_FORMAT = 137;
+
+export function normalizeVaraAddress(address: string | null | undefined): string {
+  if (!address) return "";
   try {
-    const keyring = new Keyring({ type: "sr25519", ss58Format: 137 });
-    return keyring.encodeAddress(ADMIN_WALLET_RAW);
+    return encodeAddress(decodeAddress(address), VARA_SS58_FORMAT);
   } catch {
-    return ADMIN_WALLET_RAW;
+    return address;
   }
+}
+
+function getAdminWalletSS58(): string {
+  return normalizeVaraAddress(ADMIN_WALLET_RAW);
 }
 
 const ADMIN_WALLET_SS58 = getAdminWalletSS58();
@@ -74,5 +79,5 @@ export const DIA_API =
 export function isAdminWallet(address: string | null): boolean {
   const admin = getAdminWallet();
   if (!address || !admin) return false;
-  return address.toLowerCase() === admin.toLowerCase();
+  return normalizeVaraAddress(address) === admin;
 }

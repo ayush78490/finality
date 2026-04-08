@@ -14,6 +14,7 @@ export interface Fixture {
   season_id: number;
   state_id: number;
   starting_at: string;
+  ending_at?: string;
   result_info: string;
   has_odds: boolean;
   participants: Participant[];
@@ -22,6 +23,14 @@ export interface Fixture {
     name: string;
     image_path: string;
   };
+  odds?: Array<{
+    label?: string;
+    value?: string;
+    probability?: number | string;
+    market_description?: string;
+    market_id?: number;
+    bookmaker_id?: number;
+  }>;
 }
 
 interface PaginatedResponse<T> {
@@ -45,7 +54,7 @@ export async function getUpcomingFixtures(daysAhead = 7): Promise<Fixture[]> {
 
   const res = await sportmonksFetch<PaginatedResponse<Fixture>>(
     `/fixtures/between/${from}/${to}`,
-    { include: "participants;league", per_page: "50" }
+    { include: "participants;league;odds", per_page: "50" }
   );
 
   return res.data.filter((f) => f.state_id === 1);

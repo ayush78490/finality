@@ -29,7 +29,13 @@ export function finHumanToBaseUnits(human: string): bigint {
   return scaled;
 }
 
+/** Cached injector for the current session to avoid repeated wallet lookups. */
+let cachedInjector: { address: string; signer: any } | null = null;
+
 async function getInjector(accountSs58: string) {
+  if (cachedInjector?.address === accountSs58) {
+    return cachedInjector;
+  }
   // Dynamic import keeps @polkadot/extension-dapp out of the SSR bundle
   // (it accesses `window` at module evaluation time).
   const { web3Enable, web3Accounts, web3FromSource } = await import(
@@ -45,7 +51,8 @@ async function getInjector(accountSs58: string) {
   if (!injector?.signer) {
     throw new Error("Extension signer not available.");
   }
-  return { address: acc.address, signer: injector.signer };
+  cachedInjector = { address: acc.address, signer: injector.signer };
+  return cachedInjector;
 }
 
 /** Rust `Result::Err(String)` / panic message bytes are often SCALE `String`. */
@@ -237,6 +244,19 @@ function tipToBeat(poolPriority: bigint, partialFee: bigint): bigint {
     : partialFee + BUFFER;
 }
 
+function hasGearDispatchFailure(events: any[]): string | null {
+  for (const { event } of events ?? []) {
+    if (event.section !== "gear" || event.method !== "MessagesDispatched") continue;
+    const text = JSON.stringify(
+      (event as any).data?.toHuman?.() ?? (event as any).data?.toString?.() ?? ""
+    );
+    if (/Failed|Failure|NotExecuted|Trap|panic|OutOfGas|ExecutionError/i.test(text)) {
+      return text;
+    }
+  }
+  return null;
+}
+
 /**
  * Submits `gear.sendMessage` via polkadot.js `signAndSend` (not manual signer.signPayload).
  * Manual SignerPayload + addSignature often diverges from what the node validates → 1010.
@@ -251,24 +271,9 @@ async function sendMessageWithReply(
   payload: Uint8Array,
   label: string,
   gasLimit: bigint = GAS_FALLBACK
-): Promise<void> {
+): Promise<{ txHash: string; inBlockHash: string; finalizedHash: string }> {
   await api.isReady;
   const { address, signer } = await getInjector(account);
-  const genesisHash = await api.rpc.chain.getBlockHash(0);
-  const era = api.registry.createType("ExtrinsicEra", "0x00");
-
-  const sampleTx = api.message.send(
-    { destination: programId, payload, gasLimit, value: 0 },
-    undefined,
-    undefined
-  ) as any;
-
-  let partialFee = 0n;
-  try {
-    partialFee = BigInt((await sampleTx.paymentInfo(address)).partialFee.toString());
-  } catch {
-    /* use 0 */
-  }
 
   let tipBn = 1_000_000n;
   const maxAttempts = 3;
@@ -281,21 +286,24 @@ async function sendMessageWithReply(
       undefined
     ) as any;
 
+    // Always fetch a fresh nonce before each attempt so retries don't re-use a stale one.
     const nonce = await (api.rpc as any).system.accountNextIndex(address);
 
     try {
-      await new Promise<void>((resolve, reject) => {
+      const receipt = await new Promise<{ txHash: string; inBlockHash: string; finalizedHash: string }>((resolve, reject) => {
+        let seenInBlockHash = "";
+        // Use default mortal era (no era/blockHash override).
+        // Immortal era (0x00) + genesisHash caused 1010 "outdated" rejections from the node
+        // because the extension signer and the node disagreed on the expected block reference.
         (tx as any).signAndSend(
           address,
           {
             signer,
             nonce,
             tip: tipBn,
-            era,
-            blockHash: genesisHash
           },
           (result: any) => {
-            const { status, dispatchError } = result;
+            const { status, dispatchError, events } = result;
             if (dispatchError) {
               if (dispatchError.isModule) {
                 try {
@@ -312,11 +320,24 @@ async function sendMessageWithReply(
               }
               return;
             }
-            if (status?.isInBlock || status?.isFinalized) resolve();
+            if (status?.isInBlock) {
+              seenInBlockHash = status.asInBlock?.toHex?.() ?? seenInBlockHash;
+            }
+            if (status?.isFinalized) {
+              const messageFailure = hasGearDispatchFailure(events ?? []);
+              if (messageFailure) {
+                reject(new Error(friendlyProgramError(messageFailure)));
+                return;
+              }
+              const txHash = (tx as any)?.hash?.toHex?.() ?? "";
+              const finalizedHash = status?.asFinalized?.toHex?.() ?? "";
+              const inBlockHash = seenInBlockHash || finalizedHash;
+              resolve({ txHash, inBlockHash, finalizedHash });
+            }
           }
         ).catch(reject);
       });
-      return;
+      return receipt;
     } catch (err: unknown) {
       lastErr = err;
       const msg = err instanceof Error ? err.message : String(err);
@@ -324,17 +345,14 @@ async function sendMessageWithReply(
       if (attempt >= maxAttempts - 1) throw err;
 
       if (/1014|Priority is too low/i.test(msg)) {
-        const poolPriority = parsePoolPriority(msg);
-        tipBn =
-          poolPriority !== null
-            ? tipToBeat(poolPriority, partialFee)
-            : tipBn * 2n + 1_000_000n;
+        tipBn = tipBn * 2n + 1_000_000n;
         await new Promise((r) => setTimeout(r, 500));
         continue;
       }
 
       if (/1010|outdated/i.test(msg)) {
-        await new Promise((r) => setTimeout(r, 1200));
+        // Wait one block (~2s on Vara) before re-fetching nonce and retrying.
+        await new Promise((r) => setTimeout(r, 2000));
         continue;
       }
 
@@ -355,7 +373,12 @@ export async function submitBuySide(params: {
   minSharesOut: bigint;
   /** Current `Fin.GetRound` id when the buy is submitted — stored for profile position lookup. */
   roundId?: string;
-}): Promise<void> {
+}): Promise<{
+  approveTxHash: string;
+  approveInBlockHash: string;
+  buyTxHash: string;
+  buyInBlockHash: string;
+}> {
   const { api, account, assetKey, side, finHuman, minSharesOut, roundId } = params;
   if (!MARKET_PROGRAM_ID) {
     throw new Error("NEXT_PUBLIC_MARKET_PROGRAM_ID is not set.");
@@ -369,7 +392,7 @@ export async function submitBuySide(params: {
 
   // Helper that runs both steps (Approve FIN → Buy side) as one atomic attempt.
   const attempt = async () => {
-    await sendMessageWithReply(
+    const approve = await sendMessageWithReply(
       api,
       FIN_PROGRAM_ID as `0x${string}`,
       account,
@@ -379,21 +402,30 @@ export async function submitBuySide(params: {
 
     await new Promise((r) => setTimeout(r, 750));
 
-    await sendMessageWithReply(
+    const buy = await sendMessageWithReply(
       api,
       MARKET_PROGRAM_ID as `0x${string}`,
       account,
       buyPayload,
       "Buy side"
     );
+
+    return { approve, buy };
   };
 
-  await attempt();
+  const { approve, buy } = await attempt();
 
   // Record in localStorage so the profile page can list this market without block scanning.
   if (MARKET_PROGRAM_ID) {
     recordTradedMarket(MARKET_PROGRAM_ID, account, assetKey, roundId);
   }
+
+  return {
+    approveTxHash: approve.txHash,
+    approveInBlockHash: approve.inBlockHash,
+    buyTxHash: buy.txHash,
+    buyInBlockHash: buy.inBlockHash,
+  };
 }
 
 /** Anyone can call when round is Open and chain time ≥ `end_ts` and oracle tick is fresh. */

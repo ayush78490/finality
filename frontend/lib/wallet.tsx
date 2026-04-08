@@ -11,7 +11,7 @@ import {
 } from "react";
 import { VARA_WS } from "./config";
 import { fetchFinBalance } from "./fin-balance";
-import { isAdminWallet } from "./config";
+import { isAdminWallet, normalizeVaraAddress } from "./config";
 
 type GearApiType = import("@gear-js/api").GearApi;
 
@@ -37,8 +37,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [finBalance, setFinBalance] = useState<string | null>(null);
   const [finBalanceError, setFinBalanceError] = useState<string | null>(null);
   const [finBalanceLoading, setFinBalanceLoading] = useState(false);
-  /** Last successful FIN read — kept on transient RPC failures so the header does not “go blank”. */
+  /** Last successful FIN read — kept on transient RPC failures so the header does not "go blank". */
   const lastFinBalanceRef = useRef<string | null>(null);
+
+  /** Computed normalized address for admin checks - derived from account */
+  const normalizedAccount = useMemo(() => {
+    if (!account) return null;
+    return normalizeVaraAddress(account);
+  }, [account]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,8 +62,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const { web3Enable, web3Accounts } = await import("@polkadot/extension-dapp");
     await web3Enable("Finality");
     const accs = await web3Accounts();
-    if (!accs[0]) throw new Error("No Polkadot-compatible account found.");
-    setAccount(accs[0].address);
+    if (accs.length === 0) throw new Error("No Polkadot-compatible account found.");
+
+    // Prefer the configured admin wallet when it is available in the extension,
+    // otherwise fall back to the first account the user exposed.
+    const preferred = accs.find((acc) => isAdminWallet(acc.address)) ?? accs[0];
+    // Store the original address format from the extension (not normalized)
+    // so that getInjector can find it later when submitting transactions
+    setAccount(preferred.address);
   }, []);
 
   const disconnect = useCallback(() => {
@@ -130,11 +142,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       finBalanceError,
       finBalanceLoading,
       refreshFinBalance,
-      isAdmin: isAdminWallet(account)
+      isAdmin: isAdminWallet(normalizedAccount)
     }),
     [
       api,
       account,
+      normalizedAccount,
       connect,
       disconnect,
       finBalance,

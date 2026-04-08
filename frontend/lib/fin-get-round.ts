@@ -291,7 +291,8 @@ export async function fetchMarketRoundSnapshot(
   api: GearApi,
   marketProgramId: string,
   assetKey: string,
-  originAccount: string | null
+  originAccount: string | null,
+  atBlockHash?: string | null
 ): Promise<MarketRoundSnapshot> {
   const origin = await readOriginAddress(originAccount);
   const payload = encodeFinGetRound(api, assetKey);
@@ -299,12 +300,14 @@ export async function fetchMarketRoundSnapshot(
 
   let reply;
   try {
+    const atBlock = atBlockHash ? (atBlockHash as `0x${string}`) : undefined;
     reply = await api.message.calculateReply(
       {
         origin,
         destination: marketProgramId,
         payload,
-        value: 0
+        value: 0,
+        at: atBlock
       },
       undefined,
       undefined
@@ -334,16 +337,19 @@ export async function fetchMarketRoundDetail(
   api: GearApi,
   marketProgramId: string,
   assetKey: string,
-  originAccount: string | null
+  originAccount: string | null,
+  atBlockHash?: string | null
 ): Promise<MarketRoundDetail> {
   const origin = await readOriginAddress(originAccount);
   const payload = encodeFinGetRound(api, assetKey);
+  const atBlock = atBlockHash ? (atBlockHash as `0x${string}`) : undefined;
   const reply = await api.message.calculateReply(
     {
       origin,
       destination: marketProgramId,
       payload,
-      value: 0
+      value: 0,
+      at: atBlock
     },
     undefined,
     undefined

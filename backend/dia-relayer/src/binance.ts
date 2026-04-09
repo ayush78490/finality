@@ -11,6 +11,13 @@ export type BinanceTick = {
 
 const EXPO = -8;
 
+function binanceHttpTimeoutMs(): number {
+  const raw = process.env.BINANCE_HTTP_TIMEOUT_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 8000;
+}
+
 export function binanceSymbolForFeed(feed: {
   diaSymbol: string;
   binanceSymbol?: string;
@@ -22,7 +29,18 @@ export function binanceSymbolForFeed(feed: {
 export async function fetchBinanceSpotTick(symbol: string): Promise<BinanceTick> {
   const sym = symbol.toUpperCase();
   const url = `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(sym)}`;
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timeoutMs = binanceHttpTimeoutMs();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`Binance request failed for ${sym}: ${msg}`);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     const t = await res.text();
     throw new Error(`Binance ${res.status} ${sym}: ${t.slice(0, 200)}`);

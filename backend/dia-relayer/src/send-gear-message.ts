@@ -28,6 +28,13 @@ function hasGearDispatchFailure(events: any[]): string | null {
   return null;
 }
 
+function txTimeoutMs(): number {
+  const raw = process.env.GEAR_TX_TIMEOUT_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 90_000;
+}
+
 /** Send a `gear.sendMessage` extrinsic, retrying on 1014 with an escalating tip. */
 export async function sendGearMessage(
   api: GearApi,
@@ -70,25 +77,54 @@ export async function sendGearMessage(
 
     try {
       await new Promise<void>((resolve, reject) => {
+        let done = false;
+        let unsubscribe: (() => void) | null = null;
+        const timer = setTimeout(() => {
+          if (done) return;
+          done = true;
+          try { unsubscribe?.(); } catch { /* noop */ }
+          reject(new Error(`gear_send_timeout_${txTimeoutMs()}ms`));
+        }, txTimeoutMs());
+
+        const finishResolve = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { unsubscribe?.(); } catch { /* noop */ }
+          resolve();
+        };
+
+        const finishReject = (err: unknown) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          try { unsubscribe?.(); } catch { /* noop */ }
+          reject(err instanceof Error ? err : new Error(String(err)));
+        };
+
         tx.signAndSend(signer, { nonce, tip } as any, ({ status, dispatchError, events }: any) => {
           if (dispatchError) {
             if (dispatchError.isModule) {
               const meta = api.registry.findMetaError(dispatchError.asModule);
-              reject(new Error(`${meta.section}.${meta.name}: ${meta.docs.join(" ")}`));
+              finishReject(new Error(`${meta.section}.${meta.name}: ${meta.docs.join(" ")}`));
             } else {
-              reject(new Error(dispatchError.toString()));
+              finishReject(new Error(dispatchError.toString()));
             }
             return;
           }
           if (status?.isFinalized) {
             const messageFailure = hasGearDispatchFailure(events ?? []);
             if (messageFailure) {
-              reject(new Error(`Gear message dispatch failed: ${messageFailure}`));
+              finishReject(new Error(`Gear message dispatch failed: ${messageFailure}`));
               return;
             }
-            resolve();
+            finishResolve();
           }
-        }).catch(reject);
+        })
+          .then((unsub: unknown) => {
+            if (typeof unsub === "function") unsubscribe = unsub as () => void;
+          })
+          .catch(finishReject);
       });
       return; // success
     } catch (err: unknown) {

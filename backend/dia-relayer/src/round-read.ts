@@ -191,9 +191,8 @@ export async function readRoundDetail(
 
   if (body.length === 0 || body[0] === 0) return { phase: "None", endTs: 0 };
 
-  const roundBody = body.slice(1);
   try {
-    const opt = roundTypeRegistry.createType("Option<Round>", roundBody);
+    const opt = roundTypeRegistry.createType("Option<Round>", body);
     if (opt.isNone) return { phase: "None", endTs: 0 };
     const round = opt.unwrap();
 
@@ -283,9 +282,8 @@ export async function readRoundState(
   const tag = body[0];
   if (tag === 0) return "None";
 
-  const roundBody = body.slice(1);
   try {
-    const opt = roundTypeRegistry.createType("Option<Round>", roundBody);
+    const opt = roundTypeRegistry.createType("Option<Round>", body);
     if (opt.isNone) return "None";
     const round = opt.unwrap();
     const j = round.toJSON() as Record<string, unknown>;

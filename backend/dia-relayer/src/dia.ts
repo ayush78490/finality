@@ -11,6 +11,13 @@ const diaQuotationSchema = z.object({
   Source: z.string().optional()
 });
 
+function diaHttpTimeoutMs(): number {
+  const raw = process.env.DIA_HTTP_TIMEOUT_MS?.trim();
+  const n = raw ? Number(raw) : NaN;
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return 8000;
+}
+
 /** Normalized tick for legacy DIA loop → `Oracle.submit_round` (price as decimal strings, expo, unix sec). */
 export type DiaNormalizedTick = {
   price: {
@@ -31,7 +38,18 @@ export async function fetchLatestDia(
 ): Promise<DiaNormalizedTick> {
   const base = diaBaseUrl.replace(/\/$/, "");
   const url = new URL(`/v1/quotation/${encodeURIComponent(diaSymbol)}`, base);
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timeoutMs = diaHttpTimeoutMs();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new Error(`DIA request failed for ${diaSymbol}: ${msg}`);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     throw new Error(`DIA HTTP ${res.status} ${await res.text()}`);
   }

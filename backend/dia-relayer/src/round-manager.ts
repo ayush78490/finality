@@ -375,6 +375,43 @@ function settleToStartDelayMs(): number {
  */
 const settledAtMs = new Map<string, number>();
 
+type MarketPriority = {
+  feed: FeedEntry;
+  priority: "expired" | "active" | "no_round";
+  endTs: number | null;
+  phase: string | null;
+};
+
+async function classifyMarketPriority(
+  api: GearApi,
+  marketId: string,
+  feed: FeedEntry,
+  admin: any
+): Promise<MarketPriority> {
+  try {
+    const detail = await readRoundDetail(api, marketId, feed.symbol, admin.address);
+    
+    if (!detail.phase || detail.phase === "None") {
+      return { feed, priority: "no_round", endTs: null, phase: null };
+    }
+    
+    if (detail.phase === "Resolved") {
+      return { feed, priority: "no_round", endTs: null, phase: "Resolved" };
+    }
+    
+    const nowMs = Date.now();
+    const endMs = detail.endTs ?? 0;
+    
+    if (nowMs >= endMs) {
+      return { feed, priority: "expired", endTs: endMs, phase: detail.phase };
+    }
+    
+    return { feed, priority: "active", endTs: endMs, phase: detail.phase };
+  } catch (e: any) {
+    return { feed, priority: "no_round", endTs: null, phase: null };
+  }
+}
+
 async function startRound(
   api: GearApi,
   marketId: string,
@@ -687,10 +724,36 @@ async function main() {
       }
     }
 
-    // One feed at a time: all txs use the same `admin` key. Parallel `Promise.all` caused
-    // nonce / priority (1014) races where e.g. BTC `start_round` logged `starting_round` but
-    // never reached `round_started` while another feed’s extrinsic won the pool slot.
-    for (const feed of fileCfg.feeds) {
+    console.log(JSON.stringify({ level: "info", msg: "classifying_markets_priority" }));
+
+    const priorities = await Promise.all(
+      fileCfg.feeds.map(feed => classifyMarketPriority(api, marketId, feed, admin))
+    );
+
+    const sortedByPriority = priorities.sort((a, b) => {
+      const priorityOrder = { expired: 0, active: 1, no_round: 2 };
+      const orderDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+      if (orderDiff !== 0) return orderDiff;
+      if (a.endTs && b.endTs) return a.endTs - b.endTs;
+      return 0;
+    });
+
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "market_priority_order",
+        counts: {
+          expired: sortedByPriority.filter(m => m.priority === "expired").length,
+          active: sortedByPriority.filter(m => m.priority === "active").length,
+          no_round: sortedByPriority.filter(m => m.priority === "no_round").length,
+        },
+        first: sortedByPriority[0]?.feed.symbol,
+        firstPriority: sortedByPriority[0]?.priority,
+      })
+    );
+
+    for (const market of sortedByPriority) {
+      const feed = market.feed;
       try {
         await manageRound(feed);
       } catch (e: any) {

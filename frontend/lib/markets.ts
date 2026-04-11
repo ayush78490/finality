@@ -84,7 +84,7 @@ export const MARKETS: MarketMeta[] = [
   { slug: "bnb", label: "BNB", short: "BNB", diaSymbol: "BNB", assetId: 3, assetKey: "BNB/USD", accent: "mist" },
   { slug: "avax", label: "Avalanche", short: "AVAX", diaSymbol: "AVAX", assetId: 4, assetKey: "AVAX/USD", accent: "shore" },
   { slug: "ton", label: "TON", short: "TON", diaSymbol: "TON", assetId: 5, assetKey: "TON/USD", accent: "ember" },
-  { slug: "hype", label: "Hyperliquid", short: "HYPE", diaSymbol: "HYPE", assetId: 6, assetKey: "HYPE/USD", accent: "risk" },
+  { slug: "sui", label: "Sui", short: "SUI", diaSymbol: "SUI", assetId: 6, assetKey: "SUI/USD", accent: "risk" },
   { slug: "doge", label: "Dogecoin", short: "DOGE", diaSymbol: "DOGE", assetId: 7, assetKey: "DOGE/USD", accent: "mist" },
   { slug: "xrp", label: "XRP", short: "XRP", diaSymbol: "XRP", assetId: 8, assetKey: "XRP/USD", accent: "ember" },
   { slug: "ada", label: "Cardano", short: "ADA", diaSymbol: "ADA", assetId: 9, assetKey: "ADA/USD", accent: "shore" },

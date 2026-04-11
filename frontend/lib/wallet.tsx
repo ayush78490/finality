@@ -31,6 +31,44 @@ type Ctx = {
 
 const WalletContext = createContext<Ctx | null>(null);
 
+type ExtensionAccount = {
+  address: string;
+  meta?: {
+    name?: string;
+    isSelected?: boolean;
+    selected?: boolean;
+  };
+};
+
+function accountDisplayName(acc: ExtensionAccount): string {
+  const name = acc.meta?.name?.trim();
+  if (name) return `${name} (${acc.address.slice(0, 8)}...${acc.address.slice(-6)})`;
+  return acc.address;
+}
+
+function pickAccountInteractive(accounts: ExtensionAccount[]): ExtensionAccount | null {
+  if (accounts.length === 0) return null;
+  if (accounts.length === 1) return accounts[0];
+
+  if (typeof window === "undefined") return accounts[0];
+
+  const options = accounts
+    .map((acc, idx) => `${idx + 1}. ${accountDisplayName(acc)}`)
+    .join("\n");
+
+  const input = window.prompt(
+    `Select wallet account for Finality:\n\n${options}\n\nEnter account number:`,
+    "1"
+  );
+  if (input === null) return null;
+
+  const idx = Number.parseInt(input.trim(), 10);
+  if (!Number.isFinite(idx) || idx < 1 || idx > accounts.length) {
+    throw new Error("Invalid account selection.");
+  }
+  return accounts[idx - 1];
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [api, setApi] = useState<GearApiType | null>(null);
   const [account, setAccount] = useState<string | null>(null);
@@ -61,15 +99,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const connect = useCallback(async () => {
     const { web3Enable, web3Accounts } = await import("@polkadot/extension-dapp");
     await web3Enable("Finality");
-    const accs = await web3Accounts();
+    const accs = (await web3Accounts()) as ExtensionAccount[];
     if (accs.length === 0) throw new Error("No Polkadot-compatible account found.");
 
-    // Prefer the configured admin wallet when it is available in the extension,
-    // otherwise fall back to the first account the user exposed.
-    const preferred = accs.find((acc) => isAdminWallet(acc.address)) ?? accs[0];
+    const picked = pickAccountInteractive(accs);
+    if (!picked) return;
+
     // Store the original address format from the extension (not normalized)
     // so that getInjector can find it later when submitting transactions
-    setAccount(preferred.address);
+    setAccount(picked.address);
   }, []);
 
   const disconnect = useCallback(() => {

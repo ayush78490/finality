@@ -1,16 +1,19 @@
 {
-  "name": "@finality/dia-relayer",
+  "name": "@finality/finality-oracle",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/round-orchestrator.ts",
+    "dev": "tsx watch src/round-orchestrator.ts",
+    "typecheck": "tsc --noEmit",
     "bootstrap": "tsx src/bootstrap.ts",
     "emergency-init": "tsx src/emergency-init.ts",
     "start-rounds": "tsx src/start-rounds.ts",
     "settle-expired": "tsx src/settle-expired.ts",
-    "round-manager": "tsx src/round-manager.ts",
+    "round-orchestrator": "tsx src/round-orchestrator.ts",
+    "benchmark-orchestrator": "tsx src/benchmark-orchestrator.ts",
+    "estimate-fees": "tsx src/estimate-fees.ts",
     "verify-market": "tsx src/verify-market.ts",
     "verify-faucet": "tsx src/verify-faucet.ts"
   },

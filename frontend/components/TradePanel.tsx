@@ -177,7 +177,7 @@ export function TradePanel({
     }
     if (r.phase === "Locked") return "Settling...";
     if (r.phase === "Open") {
-      if (Date.now() >= r.endTs) return "Ended";
+      if (Date.now() >= r.endTs) return "Awaiting settlement";
       return "Open";
     }
     return r.phase;

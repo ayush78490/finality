@@ -42,7 +42,8 @@ const roundTypeRegistry = (() => {
       seed_per_side: "u128",
       trader_fin_deposited: "u128",
       payout_fin_remaining: "u128",
-      winning_shares_remaining: "u128"
+      winning_shares_remaining: "u128",
+      is_rolling: "bool"
     }
   });
   return reg;
@@ -146,6 +147,8 @@ export async function waitForRoundVisible(
 export type RoundState = "Open" | "Locked" | "Resolved" | "None";
 
 export type RoundDetail = {
+  /** Monotonic round id as decimal string when a round exists. */
+  roundId: string | null;
   /** Same as RoundState but typed as "None" when no round exists. */
   phase: RoundState;
   /**
@@ -189,11 +192,11 @@ export async function readRoundDetail(
   const raw = new Uint8Array(reply.payload as unknown as Uint8Array);
   const body = raw.subarray(finGetRoundReplyPrefixLen());
 
-  if (body.length === 0 || body[0] === 0) return { phase: "None", endTs: 0 };
+  if (body.length === 0 || body[0] === 0) return { roundId: null, phase: "None", endTs: 0 };
 
   try {
     const opt = roundTypeRegistry.createType("Option<Round>", body);
-    if (opt.isNone) return { phase: "None", endTs: 0 };
+    if (opt.isNone) return { roundId: null, phase: "None", endTs: 0 };
     const round = opt.unwrap();
 
     // Phase — safe to use toJSON() (enum index is small, no precision issue)
@@ -204,6 +207,7 @@ export async function readRoundDetail(
     // toJSON() on a u64 > 2^53 silently rounds, producing garbage values like
     // 4611686025362572000 or 13835058062217350000.
     const h = round.toHuman() as Record<string, unknown>;
+    const roundId = parseU64Human(h.id).toString();
     const endTsBigInt = parseU64Human(h.end_ts);
 
     // Contract stores timestamps as milliseconds.
@@ -246,10 +250,10 @@ export async function readRoundDetail(
       endTs = 0;
     }
 
-    return { phase, endTs };
+    return { roundId, phase, endTs };
   } catch (e) {
     console.error("Failed to decode round detail:", e);
-    return { phase: "None", endTs: 0 };
+    return { roundId: null, phase: "None", endTs: 0 };
   }
 }
 

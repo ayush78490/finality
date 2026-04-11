@@ -13,9 +13,9 @@ This repository is a monorepo and is organized for testnet-first operations.
 
 Important: backend production flow uses your custom oracle path on Vara network. It does not rely on DIA as the production data source.
 
-- The folder name `backend/dia-relayer` is historical.
-- The active operational path is the round manager plus custom oracle integration (`ORACLE_KEEPER_URL`, optional keeper-only mode).
-- The old DIA polling loop exists only as a legacy compatibility path and is disabled unless explicitly turned on.
+- Backend runtime package is `backend/finality-oracle`.
+- Active operational path is `round-orchestrator`.
+- DIA is used only as fallback quote source when Binance is unavailable.
 
 If you are operating this system in production, treat DIA-related logic as legacy tooling only, not an active oracle source.
 
@@ -63,24 +63,15 @@ Artifacts and metadata in this package are used for Gear IDEA uploads and client
 
 ### Backend Round and Oracle Operations
 
-`backend/dia-relayer` is the main backend runtime package.
+`backend/finality-oracle` is the main backend runtime package.
 
 Key scripts:
 
-- `round-manager`: primary operational loop for settle/start orchestration
+- `round-orchestrator`: primary operational loop for settle/start orchestration
 - `bootstrap`: one-time initialization (`Fin.init`, asset registration)
 - `verify-market`: read-only checks for market initialization and registered assets
 - `verify-faucet`: read-only faucet capability verification
 - `start-rounds` and `settle-expired`: targeted ops flows
-
-Legacy script:
-
-- `start` (`src/index.ts`) contains legacy DIA continuous polling and is disabled unless explicitly enabled.
-
-Custom oracle integration:
-
-- `src/oracle-keeper.ts` integrates with an external keeper service (`GET /health`, `POST /resolve`).
-- This is the intended integration point for your custom Vara oracle automation.
 
 ### Backend Utility Scripts
 
@@ -172,16 +163,15 @@ Recommended bring-up flow:
 - `npm run bootstrap:market`: execute backend bootstrap from root
 - `npm run emergency:init`: emergency initialization helper
 
-### Backend Round Package Scripts (`backend/dia-relayer`)
+### Backend Round Package Scripts (`backend/finality-oracle`)
 
 - `npm run bootstrap`: initialize market and register assets
 - `npm run emergency-init`: emergency init routine
-- `npm run round-manager`: main settle/start automation loop
+- `npm run round-orchestrator`: main settle/start automation loop
 - `npm run start-rounds`: targeted start-round automation
 - `npm run settle-expired`: settle-only routine for expired rounds
 - `npm run verify-market`: read-only initialization and registration checks
 - `npm run verify-faucet`: read-only faucet state checks
-- `npm run start`: legacy DIA polling loop (non-production, opt-in only)
 
 ### Frontend Scripts (`frontend`)
 
@@ -211,8 +201,8 @@ Do not commit real mnemonics, API tokens, or private credentials.
 Current production policy for this repository:
 
 - custom Vara oracle flow is primary,
-- round manager orchestrates settle/start actions,
-- DIA logic is legacy and should remain disabled in production.
+- Finality Oracle orchestrates settle/start actions,
+- DIA is fallback-only (not primary source).
 
 If you use keeper-only operation, confirm your keeper health endpoint and resolve endpoint are reachable before enabling transaction sending.
 

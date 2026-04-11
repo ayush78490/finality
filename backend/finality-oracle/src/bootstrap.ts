@@ -4,7 +4,7 @@
  * 2) Oracle.add_asset — for each feed (unless SKIP_ORACLE_ADD), then Fin.register_asset
  *
  * Requires BOOTSTRAP_MNEMONIC (admin; must sign register_asset) and RELAYER_MNEMONIC
- * (oracle_authority must match the account that runs `npm start` in this relayer).
+ * (oracle_authority must match the account that runs `npm run round-orchestrator`).
  */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,7 +24,7 @@ import { sendExtrinsic } from "./send-extrinsic.js";
 import { waitUntilMarketInitialized } from "./wait-init.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-/** `services/dia-relayer/.env` — works when npm is run from repo root or from this package. */
+/** `backend/finality-oracle/.env` — works when npm is run from repo root or from this package. */
 loadEnv({ path: path.join(__dirname, "..", ".env") });
 /** Optional repo-root `.env` (does not override keys already set). */
 loadEnv({ path: path.join(__dirname, "..", "..", "..", ".env") });

@@ -18,7 +18,7 @@ function diaHttpTimeoutMs(): number {
   return 8000;
 }
 
-/** Normalized tick for legacy DIA loop → `Oracle.submit_round` (price as decimal strings, expo, unix sec). */
+/** Normalized DIA quote for oracle fallback submissions (price as decimal strings, expo, unix sec). */
 export type DiaNormalizedTick = {
   price: {
     price: string;

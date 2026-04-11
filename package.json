@@ -20,8 +20,8 @@
     "build:web:docker": "docker build -f frontend/Dockerfile -t finality-web-build .",
     "build:web:docker:sync": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/sync-next-from-docker.ps1",
     "build:web:ntfs": "powershell -NoProfile -ExecutionPolicy Bypass -File backend/scripts/build-web-ntfs-temp.ps1",
-    "bootstrap:market": "npm run bootstrap --prefix backend/dia-relayer",
-    "emergency:init": "npm run emergency-init --prefix backend/dia-relayer"
+    "bootstrap:market": "npm run bootstrap --prefix backend/finality-oracle",
+    "emergency:init": "npm run emergency-init --prefix backend/finality-oracle"
   },
   "dependencies": {
     "@gear-js/api": "latest",

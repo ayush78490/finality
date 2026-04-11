@@ -71,7 +71,7 @@ Uploading WASM and creating the program are **separate**: the chain stores your 
 
 **What to do:** In Gear IDEA, use the **existing uploaded code** (same code id / hash as in the error) and **create a new program** (or retry initialization) with the **same** constructor payload `0x18437265617465` and a **higher gas limit** (use **Calculate**, then bump with **+10%** several times, or enter a larger limit if the UI allows). You can create **multiple program instances** from the same uploaded code; each gets its own program id.
 
-After the program is created, run **`npm run bootstrap`** from `services/dia-relayer` (with `MARKET_PROGRAM_ID`, `BOOTSTRAP_MNEMONIC`, `RELAYER_MNEMONIC` in `.env`). That sends **`Fin.init`** and **`Fin.register_asset`** for every feed in `config/oracle.config.json` using correct Sails SCALE encoding, and **waits** until `Fin.init` is processed before registering assets. Bootstrap applies a **minimum handle gas** (`BOOTSTRAP_HANDLE_MIN_GAS`, default `250000000000`) because RPC `calculateGas` can return a `min_limit` far below what execution actually needs — raising the limit avoids **`Fin.init` running out of gas** while the extrinsic still lands. If **`npm run verify-market`** stays **`initialized: false`** after bootstrap, open the **`Fin.init`** message in the explorer or Gear IDEA and confirm it **succeeded** (not failed / out of gas); the program id must match the uploaded **finality-market** WASM.
+After the program is created, run **`npm run bootstrap`** from `backend/finality-oracle` (with `MARKET_PROGRAM_ID`, `BOOTSTRAP_MNEMONIC`, `RELAYER_MNEMONIC` in `.env`). That sends **`Fin.init`** and **`Fin.register_asset`** for every feed in `config/oracle.config.json` using correct Sails SCALE encoding, and **waits** until `Fin.init` is processed before registering assets. Bootstrap applies a **minimum handle gas** (`BOOTSTRAP_HANDLE_MIN_GAS`, default `250000000000`) because RPC `calculateGas` can return a `min_limit` far below what execution actually needs — raising the limit avoids **`Fin.init` running out of gas** while the extrinsic still lands. If **`npm run verify-market`** stays **`initialized: false`** after bootstrap, open the **`Fin.init`** message in the explorer or Gear IDEA and confirm it **succeeded** (not failed / out of gas); the program id must match the uploaded **finality-market** WASM.
 
 Manual **`Fin.init`** parameters (if not using bootstrap):
 
@@ -89,14 +89,14 @@ This emits the authoritative `*.idl` for `@gear-js` / TypeScript clients (run fr
 
 **Gear IDEA:** On **Codes** → your uploaded WASM → **Add metadata / Sails**, attach `artifacts/finality-market-app.idl` (or the file produced by the command above). Without it, the UI cannot decode payloads and may show **`Cannot read properties of undefined (reading 'decodePayload')`** when opening a message.
 
-**Wrong manual payload:** A handle message must be full **Sails SCALE** bytes (compact service name + method + args), not the raw ASCII for `"Fin"`. For example `0x46696e` is only three bytes (`F` `i` `n`) and is **invalid** — use **Send message** built from metadata after attaching the IDL, or copy the hex from `services/dia-relayer` logs / `encodeFin*` helpers in `sails-scale.ts`.
+**Wrong manual payload:** A handle message must be full **Sails SCALE** bytes (compact service name + method + args), not the raw ASCII for `"Fin"`. For example `0x46696e` is only three bytes (`F` `i` `n`) and is **invalid** — use **Send message** built from metadata after attaching the IDL, or copy the hex from `backend/finality-oracle` logs / `encodeFin*` helpers in `sails-scale.ts`.
 
 ## Service shape
 
 - `Program::create` (constructor)
 - Service **`Fin`**: `init`, `push_price` (oracle only), `register_asset`, `start_round`, `buy_side`, `settle_round`, `claim`, queries `get_tick`, `get_round`, `get_position`, `fin_token`, etc.
 
-The TypeScript relayer encodes handle messages as **Sails SCALE**: `Fin` + `PushPrice` + args (see `services/dia-relayer/src/sails-scale.ts`). Do **not** pass plain `{ Fin: { … } }` objects to `api.message.send` without metadata — that encoding does not match on-chain dispatch.
+The TypeScript oracle runtime encodes handle messages as **Sails SCALE**: `Fin` + `PushPrice` + args (see `backend/finality-oracle/src/sails-scale.ts`). Do **not** pass plain `{ Fin: { … } }` objects to `api.message.send` without metadata — that encoding does not match on-chain dispatch.
 
 Traders must **approve** the market program on FIN before `buy_side` / admins before `start_round` (seed liquidity).
 

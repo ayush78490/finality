@@ -136,6 +136,20 @@ export function encodeFinClaim(api: GearApi, assetKey: string): Uint8Array {
   );
 }
 
+/** `Fin.ClaimForRound(asset_key, round_id)` — winners redeem FIN from a specific historical/current round. */
+export function encodeFinClaimForRound(
+  api: GearApi,
+  assetKey: string,
+  roundId: bigint | string | number
+): Uint8Array {
+  return u8aConcat(
+    stringToU8aWithPrefix("Fin"),
+    stringToU8aWithPrefix("ClaimForRound"),
+    api.registry.createType("String", assetKey).toU8a(),
+    api.registry.createType("u64", roundId).toU8a()
+  );
+}
+
 /** `Fin.SetPaused(paused)` — check if market is initialized by testing admin function */
 export function encodeFinSetPaused(api: GearApi, paused: boolean): Uint8Array {
   return u8aConcat(

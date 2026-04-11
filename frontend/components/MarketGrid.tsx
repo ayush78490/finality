@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { fetchAllMarketRoundSnapshots, fetchAllMarketRoundDetails, type MarketRoundSnapshot, type MarketRoundDetail } from "@/lib/fin-get-round";
+import { fetchAllMarketRoundDetails, type MarketRoundSnapshot, type MarketRoundDetail } from "@/lib/fin-get-round";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
 import { MARKETS, type MarketMeta } from "@/lib/markets";
 import { useWallet } from "@/lib/wallet";
@@ -17,7 +17,7 @@ const COIN_ICONS: Record<string, string> = {
   bnb: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2.png",
   avax: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png",
   ton: "https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png",
-  hype: "https://assets.coingecko.com/coins/images/33499/small/hyperliquid.png",
+  sui: "https://cryptologos.cc/logos/sui-sui-logo.png?v=040",
   doge: "https://assets.coingecko.com/coins/images/5/small/dogecoin.png",
   xrp: "https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-888.png",
   ada: "https://assets.coingecko.com/coins/images/975/small/cardano.png",
@@ -230,48 +230,45 @@ export function MarketGrid() {
 
   useEffect(() => {
     if (!api || !MARKET_PROGRAM_ID) {
-      console.log('[MarketGrid] Skipping fetch - api:', !!api, 'MARKET_PROGRAM_ID:', MARKET_PROGRAM_ID);
       return;
     }
-    console.log('[MarketGrid] Starting fetch - api ready, MARKET_PROGRAM_ID:', MARKET_PROGRAM_ID);
+
     let cancelled = false;
-    
+
     const run = async () => {
       try {
-        console.log('[MarketGrid] Fetching round data for markets:', markets.map(m => m.slug));
-        const [nextPhases, nextDetails] = await Promise.all([
-          fetchAllMarketRoundSnapshots(api, MARKET_PROGRAM_ID, markets, account),
-          fetchAllMarketRoundDetails(api, MARKET_PROGRAM_ID, markets, account)
-        ]);
-        console.log('[MarketGrid] Fetched phases:', nextPhases);
-        console.log('[MarketGrid] Fetched details keys:', Object.keys(nextDetails));
-        
-        // Log each market's phase and id for debugging
+        // Single-pass round detail load, then derive phase map to avoid duplicate chain reads.
+        const nextDetails = await fetchAllMarketRoundDetails(api, MARKET_PROGRAM_ID, markets, account);
+        const nextPhases: PhaseMap = {};
         for (const m of markets) {
-          const phase = nextPhases[m.slug];
           const detail = nextDetails[m.slug];
-          if (phase && phase !== "error" && phase.kind === "round") {
-            console.log(`[MarketGrid] ${m.slug}: phase=${phase.phase}, id=${(detail as any)?.id || 'no detail'}`);
-          } else if (phase === "error") {
-            console.log(`[MarketGrid] ${m.slug}: ERROR`);
-          } else if (phase?.kind === "none") {
-            console.log(`[MarketGrid] ${m.slug}: no round`);
+          if (detail === "error") {
+            nextPhases[m.slug] = "error";
+            continue;
           }
+          if (!detail || detail.kind === "none") {
+            nextPhases[m.slug] = { kind: "none" };
+            continue;
+          }
+          nextPhases[m.slug] = {
+            kind: "round",
+            phase: detail.phase,
+            outcomeUp: detail.outcomeUp,
+          };
         }
-        
+
         if (!cancelled) {
           setPhases(nextPhases);
           setDetails(nextDetails);
         }
       } catch (e) {
-        console.error('[MarketGrid] Error fetching rounds:', e);
         if (!cancelled) {
           setPhases({});
           setDetails({});
         }
       }
     };
-    
+
     void run();
     const id = window.setInterval(() => void run(), POLL_MS);
     return () => {

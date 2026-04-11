@@ -1,6 +1,6 @@
 {
   "diaBaseUrl": "https://api.diadata.org",
-  "marketProgramId": "0x8743f51472971cc51056a19a761e262304dfd9fecf2df27cbe1bd371b809e6e9",
+  "marketProgramId": "0x2a8a2e994077c4e1f49e7b752a6005a8cef39db5770f8e2cc49a4bdb14728922",
   "adminWallet": "0xc83ed8c6d89bae7f2bd396b36c594857cb590ec43eb332488abc88339006782f",
   "pollIntervalMs": 5000,
   "maxPriceAgeSeconds": 120,
@@ -11,7 +11,7 @@
     { "symbol": "BNB/USD", "diaSymbol": "BNB", "assetId": 3 },
     { "symbol": "AVAX/USD", "diaSymbol": "AVAX", "assetId": 4 },
     { "symbol": "TON/USD", "diaSymbol": "TON", "assetId": 5 },
-    { "symbol": "HYPE/USD", "diaSymbol": "HYPE", "assetId": 6 },
+    { "symbol": "SUI/USD", "diaSymbol": "SUI", "assetId": 6 },
     { "symbol": "DOGE/USD", "diaSymbol": "DOGE", "assetId": 7 },
     { "symbol": "XRP/USD", "diaSymbol": "XRP", "assetId": 8 },
     { "symbol": "ADA/USD", "diaSymbol": "ADA", "assetId": 9 },
@@ -38,7 +38,10 @@
   ],
   "notes": [
     "Embedded oracle: admin calls `Oracle.add_asset` (e.g. symbol BTC, 8 decimals) to get sequential asset ids; `Fin.register_asset` links market symbol (e.g. BTC/USD) to that assetId.",
-    "Round manager uses Binance → `Oracle.submit_round` before settle/start; RELAYER_MNEMONIC must match `Fin.init` oracle_authority.",
-    "Legacy DIA polling (`npm start`) is off unless ORACLE_ENABLE_PUSH=true; diaBaseUrl is only used for that path."
-  ]
+    "Finality Oracle orchestrator uses Binance → `Oracle.submit_round` before settle/start; RELAYER_MNEMONIC must match `Fin.init` oracle_authority.",
+    "diaBaseUrl is used as fallback quote source when Binance is unavailable."
+  ],
+  "roundMode": "rolling",
+  "roundSeconds": 300,
+  "combinedSettleRoll": false
 }

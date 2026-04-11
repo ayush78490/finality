@@ -5,7 +5,7 @@
  * Usage: npm run settle-expired
  *
  * Env: BOOTSTRAP_MNEMONIC (signs settle), RELAYER_MNEMONIC (oracle authority — submit_round),
- *      MARKET_PROGRAM_ID, same as round-manager.
+ *      MARKET_PROGRAM_ID.
  */
 import "dotenv/config";
 import path from "node:path";

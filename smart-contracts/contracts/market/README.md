@@ -2,7 +2,7 @@
 
 This folder defines the **Sails IDL** that the:
 
-- **DIA relayer** (`services/dia-relayer`) targets for `Fin.PushPrice`.
+- **Finality Oracle** (`backend/finality-oracle`) targets for `Fin.PushPrice`.
 - **Frontend / indexer** use for queries and user transactions.
 
 ## Deploy flow

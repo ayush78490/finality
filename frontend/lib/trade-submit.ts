@@ -6,6 +6,7 @@ import { FIN_DECIMALS, FIN_PROGRAM_ID, MARKET_PROGRAM_ID } from "./config";
 import {
   encodeFinBuySide,
   encodeFinClaim,
+  encodeFinClaimForRound,
   encodeFinClaimSeed,
   encodeFinSettleRound,
   encodeVftApprove,
@@ -69,6 +70,12 @@ function decodeErrPayload(payloadHex: string): string {
 /** Maps runtime dispatch errors to short, actionable UI text. */
 function friendlyDispatchError(label: string, fullMessage: string): string {
   const m = fullMessage;
+  if (m.includes("1010") || /Invalid Transaction: Transaction is outdated/i.test(m)) {
+    return `${label}: Transaction nonce is outdated (another tx from this wallet is still pending). Wait a few seconds and retry.`;
+  }
+  if (m.includes("1014") || /Priority is too low/i.test(m)) {
+    return `${label}: A transaction with the same nonce is already in the pool at higher priority. Wait for it to finalize, then retry.`;
+  }
   if (
     m.includes("gearBank.InsufficientBalance") ||
     (m.includes("gearBank") && m.includes("InsufficientBalance"))
@@ -145,6 +152,9 @@ function friendlyProgramError(panic: string): string {
   if (m.includes("payout zero")) {
     return "Claim payout rounds to zero.";
   }
+  if (m.includes("snapshot not found")) {
+    return "That round snapshot is not available on-chain for this market.";
+  }
 
   return m;
 }
@@ -162,13 +172,17 @@ async function preflightClaim(
   api: GearApi,
   programId: string,
   account: string,
-  assetKey: string
+  assetKey: string,
+  roundId?: string
 ): Promise<{ errorMsg: string | null; gasLimit: bigint }> {
   await api.isReady;
   const originHex = accountToActorHex(api, account);
   const destHex = programId as `0x${string}`;
-  const payload = encodeFinClaim(api, assetKey);
-  const prefixLen = stringToU8aWithPrefix("Fin").length + stringToU8aWithPrefix("Claim").length;
+  const payload = roundId
+    ? encodeFinClaimForRound(api, assetKey, roundId)
+    : encodeFinClaim(api, assetKey);
+  const prefixLen = stringToU8aWithPrefix("Fin").length +
+    (roundId ? stringToU8aWithPrefix("ClaimForRound").length : stringToU8aWithPrefix("Claim").length);
 
   // 1. calculateReply — checks program logic without submitting a tx.
   try {
@@ -255,6 +269,144 @@ function hasGearDispatchFailure(events: any[]): string | null {
     }
   }
   return null;
+}
+
+function hasBatchDispatchFailure(events: any[]): string | null {
+  for (const { event } of events ?? []) {
+    if (event.section === "utility" && event.method === "BatchInterrupted") {
+      return JSON.stringify((event as any).data?.toHuman?.() ?? (event as any).data?.toString?.() ?? "BatchInterrupted");
+    }
+    if (event.section === "system" && event.method === "ExtrinsicFailed") {
+      return JSON.stringify((event as any).data?.toHuman?.() ?? (event as any).data?.toString?.() ?? "ExtrinsicFailed");
+    }
+  }
+  return null;
+}
+
+/**
+ * One-signature buy path: Utility.batchAll([VFT.approve, Fin.buy_side]).
+ * Returns on InBlock for lower UX latency.
+ */
+async function sendApproveAndBuyBatch(
+  api: GearApi,
+  account: string,
+  approveDestination: `0x${string}`,
+  approvePayload: Uint8Array,
+  buyDestination: `0x${string}`,
+  buyPayload: Uint8Array,
+  gasLimit: bigint = GAS_FALLBACK
+): Promise<{ txHash: string; inBlockHash: string; finalizedHash: string }> {
+  await api.isReady;
+  const { address, signer } = await getInjector(account);
+
+  let tipBn = 1_000_000n;
+  const maxAttempts = 3;
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const approveCall = (api.message.send(
+      { destination: approveDestination, payload: approvePayload, gasLimit, value: 0 },
+      undefined,
+      undefined
+    ) as any);
+
+    const buyCall = (api.message.send(
+      { destination: buyDestination, payload: buyPayload, gasLimit, value: 0 },
+      undefined,
+      undefined
+    ) as any);
+
+    const batchTx = (api.tx as any).utility.batchAll([approveCall, buyCall]);
+    const nonce = await (api.rpc as any).system.accountNextIndex(address);
+
+    try {
+      const receipt = await new Promise<{ txHash: string; inBlockHash: string; finalizedHash: string }>((resolve, reject) => {
+        let done = false;
+
+        void (batchTx as any)
+          .signAndSend(
+            address,
+            {
+              signer,
+              nonce,
+              tip: tipBn,
+            },
+            (result: any) => {
+              if (done) return;
+              const { status, dispatchError, events } = result;
+
+              if (dispatchError) {
+                done = true;
+                if (dispatchError.isModule) {
+                  try {
+                    const meta = api.registry.findMetaError(dispatchError.asModule);
+                    const raw = `Buy batch: ${meta.section}.${meta.name} — ${meta.docs.join(" ")}`;
+                    reject(new Error(friendlyDispatchError("Buy batch", raw)));
+                    return;
+                  } catch {
+                    const raw = `Buy batch: ${dispatchError.toString()}`;
+                    reject(new Error(friendlyDispatchError("Buy batch", raw)));
+                    return;
+                  }
+                }
+                const raw = `Buy batch: ${dispatchError.toString()}`;
+                reject(new Error(friendlyDispatchError("Buy batch", raw)));
+                return;
+              }
+
+              if (status?.isInBlock) {
+                const batchFailure = hasBatchDispatchFailure(events ?? []);
+                if (batchFailure) {
+                  done = true;
+                  reject(new Error(friendlyProgramError(batchFailure)));
+                  return;
+                }
+
+                const messageFailure = hasGearDispatchFailure(events ?? []);
+                if (messageFailure) {
+                  done = true;
+                  reject(new Error(friendlyProgramError(messageFailure)));
+                  return;
+                }
+
+                done = true;
+                const txHash = (batchTx as any)?.hash?.toHex?.() ?? "";
+                const inBlockHash = status.asInBlock?.toHex?.() ?? "";
+                resolve({ txHash, inBlockHash, finalizedHash: "" });
+              }
+            }
+          )
+          .catch((e: unknown) => {
+            if (done) return;
+            done = true;
+            const msg = e instanceof Error ? e.message : String(e);
+            reject(new Error(friendlyDispatchError("Buy batch", msg)));
+          });
+      });
+
+      return receipt;
+    } catch (err: unknown) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+
+      if (attempt >= maxAttempts - 1) throw err;
+
+      if (/1014|Priority is too low/i.test(msg)) {
+        tipBn = tipBn * 2n + 1_000_000n;
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
+
+      if (/1010|outdated/i.test(msg)) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 /**
@@ -363,7 +515,10 @@ async function sendMessageWithReply(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-/** Approve FIN for the market program, then `Fin.BuySide` — two txs, each reply-checked. */
+/**
+ * Fast path: one signature, one extrinsic.
+ * Uses `utility.batchAll([Vft.Approve, Fin.BuySide])` and returns at InBlock.
+ */
 export async function submitBuySide(params: {
   api: GearApi;
   account: string;
@@ -389,31 +544,14 @@ export async function submitBuySide(params: {
 
   const approvePayload = encodeVftApprove(api, MARKET_PROGRAM_ID, finIn);
   const buyPayload = encodeFinBuySide(api, assetKey, sideU8, finIn, minSharesOut);
-
-  // Helper that runs both steps (Approve FIN → Buy side) as one atomic attempt.
-  const attempt = async () => {
-    const approve = await sendMessageWithReply(
-      api,
-      FIN_PROGRAM_ID as `0x${string}`,
-      account,
-      approvePayload,
-      "Approve FIN"
-    );
-
-    await new Promise((r) => setTimeout(r, 750));
-
-    const buy = await sendMessageWithReply(
-      api,
-      MARKET_PROGRAM_ID as `0x${string}`,
-      account,
-      buyPayload,
-      "Buy side"
-    );
-
-    return { approve, buy };
-  };
-
-  const { approve, buy } = await attempt();
+  const batchReceipt = await sendApproveAndBuyBatch(
+    api,
+    account,
+    FIN_PROGRAM_ID as `0x${string}`,
+    approvePayload,
+    MARKET_PROGRAM_ID as `0x${string}`,
+    buyPayload
+  );
 
   // Record in localStorage so the profile page can list this market without block scanning.
   if (MARKET_PROGRAM_ID) {
@@ -421,10 +559,10 @@ export async function submitBuySide(params: {
   }
 
   return {
-    approveTxHash: approve.txHash,
-    approveInBlockHash: approve.inBlockHash,
-    buyTxHash: buy.txHash,
-    buyInBlockHash: buy.inBlockHash,
+    approveTxHash: batchReceipt.txHash,
+    approveInBlockHash: batchReceipt.inBlockHash,
+    buyTxHash: batchReceipt.txHash,
+    buyInBlockHash: batchReceipt.inBlockHash,
   };
 }
 
@@ -454,26 +592,30 @@ export async function submitClaim(params: {
   api: GearApi;
   account: string;
   assetKey: string;
+  /** Optional explicit round id for historical claims (rolling snapshots). */
+  roundId?: string;
 }): Promise<void> {
-  const { api, account, assetKey } = params;
+  const { api, account, assetKey, roundId } = params;
   if (!MARKET_PROGRAM_ID) {
     throw new Error("Market program id is not configured.");
   }
 
   // Pre-flight: simulate claim on-chain (read-only). Shows exact program errors
   // before opening the wallet popup so the user isn't charged VARA gas for a doomed tx.
-  const { errorMsg, gasLimit } = await preflightClaim(api, MARKET_PROGRAM_ID, account, assetKey);
+  const { errorMsg, gasLimit } = await preflightClaim(api, MARKET_PROGRAM_ID, account, assetKey, roundId);
   if (errorMsg) {
     throw new Error(errorMsg);
   }
 
-  const payload = encodeFinClaim(api, assetKey);
+  const payload = roundId
+    ? encodeFinClaimForRound(api, assetKey, roundId)
+    : encodeFinClaim(api, assetKey);
   await sendMessageWithReply(
     api,
     MARKET_PROGRAM_ID as `0x${string}`,
     account,
     payload,
-    "Claim",
+    roundId ? `Claim round #${roundId}` : "Claim",
     gasLimit
   );
 }

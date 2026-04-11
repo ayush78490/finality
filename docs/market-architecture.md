@@ -7,7 +7,7 @@
 - Creation: admin-only.
 - Matching model: AMM (fast path), order book later.
 - Settlement source: DIA Data API quotations (off-chain relayer → `PushPrice`).
-- Assets first: BTC, ETH, SOL, BNB, AVAX, TON, HYPE.
+- Assets first: BTC, ETH, SOL, BNB, AVAX, TON, SUI.
 - Restart behavior: automatic new round creation every 5 minutes.
 - History: previous rounds remain queryable for resolution/audit.
 
@@ -69,12 +69,12 @@ References:
 5. Claim window opens for winners.
 6. Factory auto-opens next round for same asset.
 
-## Oracle bridge (DIA on Vara)
+## Oracle bridge (Finality Oracle on Vara)
 
 DIA does not execute inside the Vara runtime. Production setup:
 
 - **DIA Data API** provides quotations (e.g. `/v1/quotation/{SYMBOL}`) — see [docs](https://www.diadata.org/docs/reference/apis/token-prices/api-endpoints).
-- **`services/dia-relayer`** polls DIA and sends `Fin.PushPrice` to the market program.
+- **`backend/finality-oracle`** reads markets in parallel and submits `Fin.PushPrice`/round actions via serialized signer queues.
 - The program enforces **staleness** and **authorized oracle** and drives **round open / settle / resolve**.
 
 See `spec/oracle-bridge.md` and `config/oracle.config.json`.

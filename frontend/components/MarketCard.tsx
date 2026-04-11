@@ -13,7 +13,7 @@ const COIN_ICONS: Record<string, string> = {
   bnb: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2.png",
   avax: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png",
   ton: "https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png",
-  hype: "https://assets.coingecko.com/coins/images/33499/small/hyperliquid.png"
+  sui: "https://cryptologos.cc/logos/sui-sui-logo.png?v=040"
 };
 
 export interface PoolData {
@@ -41,19 +41,23 @@ interface MarketCardProps {
   imageUrl?: string;
   poolData?: PoolData;
   sportsData?: SportsCardData;
+  /** True while the rolling epoch transition is in progress (SettleAndRoll mid-flight). */
+  isSettling?: boolean;
 }
 
-export function MarketCard({ market, phase, connected, imageUrl, poolData, sportsData }: MarketCardProps) {
+export function MarketCard({ market, phase, connected, imageUrl, poolData, sportsData, isSettling }: MarketCardProps) {
   const displayImage = imageUrl || COIN_ICONS[market.slug];
   const isSports = market.assetKey.startsWith("SPORT/") && !!sportsData;
   const phaseText =
     !connected || !MARKET_PROGRAM_ID
       ? "CONNECT"
-      : phase === "error"
-        ? "RPC ERROR"
-        : phase === undefined
-          ? "LOADING"
-          : phaseBadgeLabel(phase).toUpperCase();
+      : isSettling
+        ? "SETTLING\u2026"
+        : phase === "error"
+          ? "RPC ERROR"
+          : phase === undefined
+            ? "LOADING"
+            : phaseBadgeLabel(phase).toUpperCase();
 
   const parseNum = (v?: string) => {
     if (!v) return 0;

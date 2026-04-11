@@ -29,7 +29,7 @@
       "BNB",
       "AVAX",
       "TON",
-      "HYPE"
+      "SUI"
     ],
     "resolutionRule": "end_price_gte_start_price_means_up"
   }

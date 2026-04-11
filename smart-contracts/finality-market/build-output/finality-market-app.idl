@@ -28,12 +28,16 @@ type Round = struct {
   total_shares_down: u128,
   fee_acc: u128,
   /// Initial per-side seed the admin deposited via `start_round`.
+  /// In rolling mode, seed stays in the contract and rolls forward each epoch.
   seed_per_side: u128,
   /// Track trader FIN deposited (excludes admin seed) for payout calculation.
   trader_fin_deposited: u128,
   /// Remaining FIN in the user-only payout pool for winners (snapshot at settlement).
   payout_fin_remaining: u128,
   winning_shares_remaining: u128,
+  /// True when this round was created by `settle_and_roll` (seed stays in contract).
+  /// False when created by legacy `start_round` (seed returned via `claim_seed`).
+  is_rolling: bool,
 };
 
 type RoundPhase = enum {
@@ -73,8 +77,16 @@ service Fin {
   /// Winners redeem FIN pro-rata from the settled pool (one claim per user per round).
   /// Accounting is updated before the outbound VFT transfer so a failed send reverts the whole message.
   Claim : (asset_key: str) -> result (null, str);
-  /// Admin claims back their seed liquidity after round is settled.
+  /// Winners redeem FIN from a specific round id (current or historical snapshot).
+  /// This allows claiming old winning rounds even when newer rounds are already open.
+  ClaimForRound : (asset_key: str, round_id: u64) -> result (null, str);
+  /// Admin claims back their seed liquidity after round is settled (legacy mode only).
+  /// In rolling mode, the seed stays in-contract as the persistent treasury.
+  /// Use `claim_seed_for_round` to withdraw seed from a specific historical snapshot.
   ClaimSeed : (asset_key: str) -> result (null, str);
+  /// Admin withdraws seed from a specific historical rolling epoch snapshot.
+  /// Call this to fully exit a rolling market (e.g. during decommission).
+  ClaimSeedForRound : (asset_key: str, round_id: u64) -> result (null, str);
   /// Any user calls this to receive FIN from the program's treasury.
   /// Enforces a per-wallet cooldown (default 24 h).
   FaucetClaim : () -> result (null, str);
@@ -85,6 +97,10 @@ service Fin {
   /// resets it to the compile-time default (100 FIN / 24 h).
   SetFaucetConfig : (amount: u128, cooldown_secs: u64) -> null;
   SetPaused : (paused: bool) -> null;
+  /// Rolling settle + immediate next epoch open in a single call.
+  /// Replaces the legacy settle → approve → start cycle with one extrinsic.
+  /// The admin seed is NOT returned — it rolls forward as the persistent treasury.
+  SettleAndRoll : (asset_key: str) -> result (null, str);
   SettleRound : (asset_key: str) -> null;
   /// Admin seeds both sides; pulls `2 * liquidity_seed` FIN from admin via `transfer_from`.
   StartRound : (asset_key: str, liquidity_seed: u128, fee_bps: u16) -> result (null, str);
@@ -92,8 +108,13 @@ service Fin {
   query GetFaucetInfo : (user: actor_id) -> FaucetInfo;
   query GetPosition : (asset_key: str, round_id: u64, user: actor_id) -> UserPosition;
   query GetRound : (asset_key: str) -> opt Round;
+  /// Return a historical settled epoch by asset key + round id.
+  /// Used by the frontend and users to verify claims against old rolling epochs.
+  query GetRoundSnapshot : (asset_key: str, round_id: u64) -> opt Round;
   query GetTick : (asset_id: u32) -> OracleTick;
   query ListAssets : () -> vec str;
+  /// Return all snapshot round ids for an asset (newest last).
+  query ListRoundSnapshots : (asset_key: str) -> vec u64;
 };
 
 service Oracle {

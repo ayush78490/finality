@@ -109,8 +109,7 @@ Round resolution and market creation should be separated.
 ## Implementation Roadmap
 
 ## Phase 1 (safe uplift)
-- keep current `round-manager.ts` as fallback
-- introduce reader abstraction + dispatcher queues in same process
+- run orchestrator mode in-process with reader abstraction + dispatcher queues
 - enable shorter polling and nearest-expiry prioritization
 
 ## Phase 2 (process split)
@@ -162,7 +161,7 @@ Alert when:
 ## Rollback Strategy
 
 1. Stop orchestrator/readers.
-2. Restart legacy `npm run round-manager`.
+2. Restart `npm run round-orchestrator` with known-good env/config.
 3. Replay unresolved intents if needed.
 4. Keep feature flag to switch modes quickly.
 
@@ -171,11 +170,10 @@ Alert when:
 ## Proposed File Plan (No New Doc)
 
 Planned code files for this approach:
-- `backend/dia-relayer/src/round-manager.ts` (fallback kept)
-- `backend/dia-relayer/src/round-orchestrator.ts` (new)
-- `backend/dia-relayer/src/round-reader-worker.ts` (new, read-only)
-- `backend/dia-relayer/src/tx-dispatcher.ts` (new)
-- `backend/dia-relayer/src/config.ts` (optional schema extension, non-secret only)
+- `backend/finality-oracle/src/round-orchestrator.ts`
+- `backend/finality-oracle/src/round-reader-worker.ts` (read-only)
+- `backend/finality-oracle/src/tx-dispatcher.ts`
+- `backend/finality-oracle/src/config.ts` (optional schema extension, non-secret only)
 
 ---
 

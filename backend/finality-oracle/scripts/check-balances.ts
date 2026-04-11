@@ -24,7 +24,7 @@ async function main() {
   const bootMn = process.env.BOOTSTRAP_MNEMONIC?.trim();
   const relMn = process.env.RELAYER_MNEMONIC?.trim();
   if (!bootMn || !relMn) {
-    console.error("Missing BOOTSTRAP_MNEMONIC or RELAYER_MNEMONIC in services/dia-relayer/.env");
+    console.error("Missing BOOTSTRAP_MNEMONIC or RELAYER_MNEMONIC in backend/finality-oracle/.env");
     process.exit(1);
   }
 

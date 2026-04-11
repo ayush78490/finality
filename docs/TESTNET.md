@@ -53,11 +53,11 @@ Rate limits are controlled by `FAUCET_WINDOW_MS` and `FAUCET_MAX_PER_WINDOW`.
 
 `Send Message` → `VftAdmin` → `Mint` → `to` = recipient **actor id hex** (`0x` + 32 bytes), `value` = amount in base units.
 
-## 3) Oracle relayer (DIA → market program)
+## 3) Finality Oracle (market program automation)
 
 1. Deploy the on-chain market program implementing `contracts/market/sails.idl`.
 2. **Initialize + register feeds** (pick one):
-   - **Script (recommended):** from `services/dia-relayer`, set `BOOTSTRAP_MNEMONIC`, `RELAYER_MNEMONIC`, `MARKET_PROGRAM_ID`, then `npm run bootstrap` (runs `Fin.init` and `register_asset` for each feed in `config/oracle.config.json`). See `services/dia-relayer/README.md`.
+   - **Script (recommended):** from `backend/finality-oracle`, set `BOOTSTRAP_MNEMONIC`, `RELAYER_MNEMONIC`, `MARKET_PROGRAM_ID`, then `npm run bootstrap` (runs `Fin.init` and `register_asset` for each feed in `config/oracle.config.json`). See `backend/finality-oracle/README.md`.
    - **Manual:** Call `Fin.init` with `oracle_authority` = the relayer wallet’s `ActorId`, then `register_asset` per feed with `feed_id` = **SHA256("DIA:"+diaSymbol)** (64 hex chars, see `config/oracle.config.json`).
 3. Ensure `marketProgramId` in `config/oracle.config.json` matches the deployed program.
 4. Run relayer:
@@ -70,9 +70,9 @@ DRY_RUN=false
 ```
 
 ```bash
-cd services/dia-relayer
+cd backend/finality-oracle
 npm install
-npm start
+npm run round-orchestrator
 ```
 
 With empty `marketProgramId` and default `DRY_RUN`, the relayer only **logs** DIA ticks (safe for testing wiring).
@@ -87,7 +87,7 @@ This is **not** the same as the HTTP minter in §2A. It calls the **market** pro
 
 | Symptom | Cause |
 |--------|--------|
-| `not initialized` | `Fin.init` was never called on **this** program id. Run `npm run bootstrap` in `services/dia-relayer` (or call `Fin.init` manually). |
+| `not initialized` | `Fin.init` was never called on **this** program id. Run `npm run bootstrap` in `backend/finality-oracle` (or call `Fin.init` manually). |
 | `faucet transfer failed — treasury may be empty` | The **market program** has **no FIN** on the FIN VFT contract. Fund it: send FIN **to the market program’s ActorId** on the FIN token (same pattern as funding any program’s token balance). |
 | Wrong / unknown program | **Program id must match exactly** the deployed market. Copy `marketProgramId` from `config/oracle.config.json`. Typos (e.g. `0xd3d154f73…` vs `0xd3d1541f73…`) send the message to the wrong address → execution fails. |
 | Gear IDEA shows `Payload: {}` for `FaucetClaim` | No JSON args is normal; the runtime still uses Sails SCALE (`Fin` + `FaucetClaim`). If IDEA builds the wrong bytes, use the **Finality** app or scripts that encode like `apps/web/lib/sails-payload.ts`. |

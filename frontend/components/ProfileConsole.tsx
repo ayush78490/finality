@@ -6,7 +6,7 @@ import { MARKET_PROGRAM_ID } from "@/lib/config";
 import { fetchProfileMarketSummaries, fetchCreatedMarkets, type ProfileMarketSummary, type CreatedMarketInfo } from "@/lib/profile-data";
 import { useWallet } from "@/lib/wallet";
 import { submitClaim } from "@/lib/trade-submit";
-import { getTradedAssetKeys } from "@/lib/traded-markets";
+import { getClaimedRound, getTradedAssetKeys, recordClaimedRound } from "@/lib/traded-markets";
 
 const FIN_DEC = 1_000_000_000_000n;
 
@@ -97,12 +97,40 @@ export function ProfileConsole() {
     setClaimMsg((m) => ({ ...m, [key]: "" }));
     setClaimingKey(key);
     try {
-      await submitClaim({ api, account, assetKey: row.market.assetKey });
+      await submitClaim({
+        api,
+        account,
+        assetKey: row.market.assetKey,
+        roundId: row.claimRoundId ?? undefined,
+      });
+      if (MARKET_PROGRAM_ID && row.claimRoundId) {
+        recordClaimedRound(
+          MARKET_PROGRAM_ID,
+          account,
+          row.market.assetKey,
+          row.claimRoundId,
+          row.claimAmountBase ?? 0n
+        );
+      }
       setClaimMsg((m) => ({ ...m, [key]: "✓ Claimed! Check your FIN balance." }));
       await refreshFinBalance();
       await load();
     } catch (e: unknown) {
-      setClaimMsg((m) => ({ ...m, [key]: e instanceof Error ? e.message : String(e) }));
+      const errorText = e instanceof Error ? e.message : String(e);
+      if (
+        MARKET_PROGRAM_ID &&
+        row.claimRoundId &&
+        /already claimed/i.test(errorText)
+      ) {
+        recordClaimedRound(
+          MARKET_PROGRAM_ID,
+          account,
+          row.market.assetKey,
+          row.claimRoundId,
+          row.claimAmountBase ?? 0n
+        );
+      }
+      setClaimMsg((m) => ({ ...m, [key]: errorText }));
     } finally {
       setClaimingKey(null);
     }
@@ -204,6 +232,11 @@ export function ProfileConsole() {
             const m = row.market;
             const claiming = claimingKey === m.slug;
             const msg = claimMsg[m.slug];
+            const claimed =
+              MARKET_PROGRAM_ID && row.claimRoundId
+                ? getClaimedRound(MARKET_PROGRAM_ID, account, row.market.assetKey, row.claimRoundId)
+                : null;
+            const canClaimNow = row.canTryClaim && !claimed;
             const hasShares = row.sharesUp > 0n || row.sharesDown > 0n;
             const past = row.pastRoundPosition;
             const hasPastOnly =
@@ -214,12 +247,13 @@ export function ProfileConsole() {
             const isOpen = row.detail.kind === "round" && row.detail.phase === "Open";
             const roundId = row.detail.kind === "round" ? row.detail.id : null;
             const endTs = row.detail.kind === "round" ? row.detail.endTs : null;
+            const isAwaitingSettlement = isOpen && !!endTs && Date.now() >= endTs;
 
             return (
               <div
                 key={m.slug}
                 className={`glass rounded-2xl border p-4 sm:p-5 transition-all ${
-                  row.canTryClaim
+                  canClaimNow
                     ? "border-shore/60 shadow-[0_0_24px_rgba(0,200,130,0.15)]"
                     : "border-line/70"
                 }`}
@@ -245,7 +279,7 @@ export function ProfileConsole() {
                           ? row.outcomeLabel === "UP"
                             ? "border-shore/40 bg-shore/15 text-shore"
                             : "border-risk/40 bg-risk/15 text-risk"
-                          : isOpen && endTs && Date.now() >= endTs
+                          : isAwaitingSettlement
                             ? "border-ember/40 bg-ember/10 text-ember"
                             : "border-line bg-ink/40 text-mist"
                       }`}
@@ -297,11 +331,8 @@ export function ProfileConsole() {
                       ) : null}
                     </div>
                     <p className="text-[11px] leading-relaxed text-mist/55">
-                      <strong className="text-mist/70">Claim timing:</strong> winnings can only be claimed while that
-                      round is still <strong>Resolved</strong> on-chain. The relayer then opens a new round — after that,
-                      the app points at the new round, so the profile shows 0 in the current round even though your shares
-                      were in #{past.roundId}. The relayer now waits several minutes after settle before starting the next
-                      round so you have time to claim from the market page.
+                      <strong className="text-mist/70">Claim timing:</strong> claims now target specific round ids,
+                      so winnings from #{past.roundId} remain claimable even after newer rounds are open.
                     </p>
                   </div>
                 ) : (
@@ -317,16 +348,21 @@ export function ProfileConsole() {
                 ) : null}
 
                 {/* ── CLAIM BANNER ── appears when round resolved + winning shares */}
-                {row.canTryClaim ? (
+                {canClaimNow ? (
                   <div className="mt-4 rounded-xl border-2 border-shore/60 bg-gradient-to-r from-shore/15 to-shore/5 p-4">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">🏆</span>
                       <div>
                         <div className="text-sm font-bold text-shore">You won! Claim your FIN now.</div>
                         <div className="text-xs text-mist/70">
-                          Round resolved <strong className="text-shore">{row.outcomeLabel}</strong> — you bet on the
-                          winning side. Claim before the relayer starts the next round.
+                          Round #{row.claimRoundId ?? "?"} resolved <strong className="text-shore">{row.outcomeLabel}</strong> —
+                          you bet on the winning side.
                         </div>
+                        {row.claimAmountBase !== null ? (
+                          <div className="mt-1 text-xs text-shore/90">
+                            Claim amount: <strong>{finHuman(row.claimAmountBase)} FIN</strong>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                     <button
@@ -343,6 +379,16 @@ export function ProfileConsole() {
                       </p>
                     ) : null}
                   </div>
+                ) : claimed ? (
+                  <div className="mt-4 rounded-xl border border-shore/40 bg-shore/10 px-3 py-3 text-xs">
+                    <div className="font-semibold text-shore">Already claimed</div>
+                    <div className="mt-1 text-mist/80">
+                      Round #{row.claimRoundId ?? "?"} payout: <strong>{finHuman(claimed.amountBase)} FIN</strong>
+                    </div>
+                    <div className="mt-1 text-mist/50">
+                      Claimed at {new Date(claimed.claimedAtMs).toLocaleString()}
+                    </div>
+                  </div>
                 ) : isResolved && hasShares ? (
                   /* Resolved, has shares, but on losing side */
                   <div className="mt-4 rounded-xl border border-line/40 bg-ink/20 px-3 py-2.5 text-xs text-mist/60">
@@ -354,6 +400,11 @@ export function ProfileConsole() {
                   <div className="mt-4 rounded-xl border border-line/40 bg-ink/20 px-3 py-2.5 text-xs text-mist/60">
                     No shares in this resolved round. Your trade may have been in a previous round
                     that already completed.
+                  </div>
+                ) : isAwaitingSettlement && hasShares ? (
+                  <div className="mt-3 rounded-lg border border-ember/20 bg-ember/5 px-3 py-2 text-xs text-ember/70">
+                    Round ended and is awaiting settlement. Claim appears automatically here once
+                    oracle settlement finalizes on-chain. This page refreshes every 8 seconds.
                   </div>
                 ) : isOpen && hasShares ? (
                   <div className="mt-3 rounded-lg border border-ember/20 bg-ember/5 px-3 py-2 text-xs text-ember/70">

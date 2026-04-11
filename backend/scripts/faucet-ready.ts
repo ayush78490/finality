@@ -83,7 +83,7 @@ async function main() {
   if (!claimCode.isSuccess) {
     console.log(
       "\n→ Run from repo root:  npm run bootstrap:market  " +
-        "(set BOOTSTRAP_MNEMONIC + RELAYER_MNEMONIC in backend/dia-relayer/.env or export env vars). " +
+        "(set BOOTSTRAP_MNEMONIC + RELAYER_MNEMONIC in backend/finality-oracle/.env or export env vars). " +
         "See docs/TESTNET.md."
     );
     process.exit(2);

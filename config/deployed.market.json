@@ -1,6 +1,6 @@
 {
   "varaTestnet": {
-    "marketProgramId": "0x8743f51472971cc51056a19a761e262304dfd9fecf2df27cbe1bd371b809e6e9",
-    "remarks": "Finality market (Gear program). Update if you redeploy; point dia-relayer and NEXT_PUBLIC_MARKET_PROGRAM_ID here."
+    "marketProgramId": "0x2a8a2e994077c4e1f49e7b752a6005a8cef39db5770f8e2cc49a4bdb14728922",
+    "remarks": "Finality market (Gear program). Update if you redeploy; point Finality Oracle and NEXT_PUBLIC_MARKET_PROGRAM_ID here."
   }
 }

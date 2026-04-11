@@ -129,6 +129,37 @@ export function encodeFinSettleRound(api: GearApi, assetKey: string): Uint8Array
   );
 }
 
+/**
+ * `Fin.SettleAndRoll(asset_key)` — rolling mode: settle + open next epoch in one tx.
+ * No VFT approve required. Oracle price must already be fresh on-chain.
+ */
+export function encodeFinSettleAndRoll(api: GearApi, assetKey: string): Uint8Array {
+  return u8aConcat(
+    scaleStr("Fin"),
+    scaleStr("SettleAndRoll"),
+    api.registry.createType("String", assetKey).toU8a()
+  );
+}
+
+/**
+ * `Fin.SettleAndRollWithTick(asset_key, answer)` — optional combined path:
+ * oracle price submission + settle + roll in one extrinsic.
+ * Only used when `combinedSettleRoll: true` in oracle.config.json.
+ * Requires the contract to export the `SettleAndRollWithTick` entrypoint.
+ */
+export function encodeFinSettleAndRollWithTick(
+  api: GearApi,
+  assetKey: string,
+  answer: bigint | string | number
+): Uint8Array {
+  return u8aConcat(
+    scaleStr("Fin"),
+    scaleStr("SettleAndRollWithTick"),
+    api.registry.createType("String", assetKey).toU8a(),
+    api.registry.createType("i128", answer).toU8a()
+  );
+}
+
 /** `Fin.ClaimSeed(asset_key)` — admin claims back their seed liquidity after round is settled. */
 export function encodeFinClaimSeed(api: GearApi, assetKey: string): Uint8Array {
   return u8aConcat(

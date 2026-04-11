@@ -214,10 +214,27 @@ export function Header() {
 
               <button
                 type="button"
+                onClick={() => connect().catch(console.error)}
+                className="hidden sm:inline-flex rounded-xl border border-[#2b4d73] bg-[#0e1f33] px-4 py-2 text-sm font-semibold text-[#9fc6ee] transition hover:bg-[#123057]"
+              >
+                Switch
+              </button>
+
+              <button
+                type="button"
                 onClick={disconnect}
                 className="hidden sm:inline-flex rounded-xl border border-[#266ed4] bg-[#0e1f33] px-4 py-2 text-sm font-semibold text-[#7eb9ff] transition hover:bg-[#123057]"
               >
                 Sign out
+              </button>
+
+              <button
+                type="button"
+                onClick={() => connect().catch(console.error)}
+                aria-label="Switch account"
+                className="sm:hidden rounded-lg border border-[#2b4d73] bg-[#0e1f33] px-2.5 py-1.5 text-xs font-semibold text-[#9fc6ee]"
+              >
+                Switch
               </button>
 
               <button

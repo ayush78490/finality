@@ -8,7 +8,11 @@
  */
 import type { GearApi } from "@gear-js/api";
 import { MARKET_PROGRAM_ID, getAdminWallet } from "./config";
-import { fetchMarketRoundDetail, type MarketRoundDetail } from "./fin-get-round";
+import {
+  fetchMarketRoundDetail,
+  fetchMarketRoundSnapshotDetail,
+  type MarketRoundDetail,
+} from "./fin-get-round";
 import { fetchUserPosition } from "./fin-position";
 import { MARKETS, type MarketMeta } from "./markets";
 import { getTradedAssetKeys, getTradedRoundIdsForAsset } from "./traded-markets";
@@ -25,6 +29,10 @@ export type ProfileMarketSummary = {
     sharesUp: bigint;
     sharesDown: bigint;
   } | null;
+  /** Round id to use for claim (current resolved round or historical snapshot round). */
+  claimRoundId: string | null;
+  /** Estimated payout for claimRoundId, in FIN base units. */
+  claimAmountBase: bigint | null;
   canTryClaim: boolean;
   outcomeLabel: "UP" | "DOWN" | null;
   error?: string;
@@ -41,6 +49,26 @@ function isResolvedWinner(detail: MarketRoundDetail, up: bigint, down: bigint): 
   if (detail.kind !== "round") return false;
   if (detail.phase !== "Resolved" || detail.outcomeUp === null) return false;
   return detail.outcomeUp ? up > 0n : down > 0n;
+}
+
+function isWinnerForRound(detail: MarketRoundDetail, up: bigint, down: bigint): boolean {
+  if (detail.kind !== "round") return false;
+  if (detail.phase !== "Resolved" || detail.outcomeUp === null) return false;
+  return detail.outcomeUp ? up > 0n : down > 0n;
+}
+
+function estimateClaimAmountBase(
+  detail: MarketRoundDetail,
+  sharesUp: bigint,
+  sharesDown: bigint
+): bigint | null {
+  if (detail.kind !== "round") return null;
+  if (detail.phase !== "Resolved" || detail.outcomeUp === null) return null;
+
+  const winnerShares = detail.outcomeUp ? sharesUp : sharesDown;
+  const totalWinnerShares = detail.outcomeUp ? detail.totalSharesUp : detail.totalSharesDown;
+  if (winnerShares <= 0n || totalWinnerShares <= 0n) return 0n;
+  return (detail.traderFinDeposited * winnerShares) / totalWinnerShares;
 }
 
 /** Build round ids to query for positions (current + stored + recent history). */
@@ -75,6 +103,9 @@ async function fetchOne(
   let sharesUp = 0n;
   let sharesDown = 0n;
   let pastRoundPosition: ProfileMarketSummary["pastRoundPosition"] = null;
+  let claimRoundId: string | null = null;
+  let claimAmountBase: bigint | null = null;
+  let claimOutcomeLabel: "UP" | "DOWN" | null = null;
 
   if (detail.kind === "round") {
     const ids = roundIdsToProbe(detail.id, programId, account, market.assetKey);
@@ -99,6 +130,12 @@ async function fetchOne(
     sharesUp = cur?.sharesUp ?? 0n;
     sharesDown = cur?.sharesDown ?? 0n;
 
+    if (isResolvedWinner(detail, sharesUp, sharesDown)) {
+      claimRoundId = detail.id;
+      claimAmountBase = estimateClaimAmountBase(detail, sharesUp, sharesDown);
+      claimOutcomeLabel = detail.outcomeUp ? "UP" : "DOWN";
+    }
+
     /** Latest past round (not current id) with any shares — for “where did my trade go?” */
     let bestRid = -1n;
     let best: { sharesUp: bigint; sharesDown: bigint } | null = null;
@@ -118,14 +155,55 @@ async function fetchOne(
         sharesDown: best.sharesDown,
       };
     }
+
+    // Historical claim support: if current round is not claimable, probe snapshots for
+    // past rounds where the user still has winning shares.
+    const snapshotCandidateIds = [...byId.entries()]
+      .filter(([rid, pos]) => rid !== detail.id && (pos.sharesUp > 0n || pos.sharesDown > 0n))
+      .map(([rid]) => rid);
+
+    if (snapshotCandidateIds.length > 0) {
+      const snapshots = await Promise.allSettled(
+        snapshotCandidateIds.map(async (rid) => {
+          const snap = await fetchMarketRoundSnapshotDetail(
+            api,
+            programId,
+            market.assetKey,
+            rid,
+            account
+          );
+          return { rid, snap };
+        })
+      );
+
+      let bestClaimRid: bigint | null = null;
+      let bestClaimOutcome: "UP" | "DOWN" | null = null;
+      let bestClaimAmount: bigint | null = null;
+      for (const s of snapshots) {
+        if (s.status !== "fulfilled") continue;
+        const pos = byId.get(s.value.rid);
+        if (!pos) continue;
+        if (!isWinnerForRound(s.value.snap, pos.sharesUp, pos.sharesDown)) continue;
+        const ridBn = BigInt(s.value.rid);
+        if (bestClaimRid === null || ridBn > bestClaimRid) {
+          bestClaimRid = ridBn;
+          bestClaimAmount = estimateClaimAmountBase(s.value.snap, pos.sharesUp, pos.sharesDown);
+          bestClaimOutcome =
+            s.value.snap.kind === "round" && s.value.snap.outcomeUp
+              ? "UP"
+              : "DOWN";
+        }
+      }
+
+      if (bestClaimRid !== null) {
+        claimRoundId = bestClaimRid.toString();
+        claimAmountBase = bestClaimAmount;
+        claimOutcomeLabel = bestClaimOutcome;
+      }
+    }
   }
 
-  const outcomeLabel =
-    detail.kind === "round" && detail.phase === "Resolved" && detail.outcomeUp !== null
-      ? detail.outcomeUp
-        ? "UP"
-        : "DOWN"
-      : null;
+  const outcomeLabel = claimOutcomeLabel;
 
   return {
     market,
@@ -133,7 +211,9 @@ async function fetchOne(
     sharesUp,
     sharesDown,
     pastRoundPosition,
-    canTryClaim: isResolvedWinner(detail, sharesUp, sharesDown),
+    claimRoundId,
+    claimAmountBase,
+    canTryClaim: claimRoundId !== null,
     outcomeLabel,
   };
 }
@@ -165,6 +245,8 @@ export async function fetchProfileMarketSummaries(
         sharesUp: 0n,
         sharesDown: 0n,
         pastRoundPosition: null,
+        claimRoundId: null,
+        claimAmountBase: null,
         canTryClaim: false,
         outcomeLabel: null,
         error: r.reason instanceof Error ? r.reason.message : String(r.reason),

@@ -11,13 +11,25 @@ const feedSchema = z.object({
 });
 
 const fileSchema = z.object({
-  /** Legacy DIA base URL (only used if ORACLE_ENABLE_PUSH=true). */
+  /** DIA fallback base URL used when Binance quote fetch fails. */
   diaBaseUrl: z.string().min(1).optional().default("https://api.diadata.org"),
   marketProgramId: z.string(),
   pollIntervalMs: z.number().int().positive(),
   maxPriceAgeSeconds: z.number().int().positive(),
   feeds: z.array(feedSchema),
-  notes: z.array(z.string()).optional()
+  notes: z.array(z.string()).optional(),
+  /**
+   * Round mode: "legacy" = original settle+approve+start cycle (default).
+   * "rolling" = single SettleAndRoll extrinsic per epoch, no per-round seed movement.
+   */
+  roundMode: z.enum(["legacy", "rolling"]).default("legacy"),
+  /** Epoch duration in seconds. Must match the on-chain `round_seconds` value. Default: 300. */
+  roundSeconds: z.number().int().positive().default(300),
+  /**
+   * When true and roundMode is "rolling", uses SettleAndRollWithTick (oracle price + settle+roll
+   * in one extrinsic). Requires the contract to support the combined entrypoint.
+   */
+  combinedSettleRoll: z.boolean().default(false),
 });
 
 export type RelayerFileConfig = z.infer<typeof fileSchema>;

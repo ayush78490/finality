@@ -15,6 +15,7 @@ import {
 } from "@/lib/trade-submit";
 import {
   fetchMarketRoundDetail,
+  fetchLatestRoundSnapshotDetail,
   type MarketRoundDetail
 } from "@/lib/fin-get-round";
 import {
@@ -54,11 +55,8 @@ type Props = { market: MarketMeta };
 type Tick = { human: number; publishTime: number };
 
 const ROUND_MS = 5 * 60 * 1000;
-// Must match `services/dia-relayer` SETTLE_TO_START_DELAY_MS (default 60000 on testnet).
-// Used only for UI countdown to the relayer's next `start_round`.
-const SETTLE_TO_START_DELAY_MS = Number(
-  process.env.NEXT_PUBLIC_SETTLE_TO_START_DELAY_MS ?? "60000"
-);
+// Rolling mode: no gap between settle and next open epoch.
+// SETTLE_TO_START_DELAY_MS is kept at 0 and removed from UI logic.
 
 function fmtUsd(n: number) {
   if (!Number.isFinite(n)) return "—";
@@ -73,12 +71,10 @@ function formatCountdown(totalSec: number) {
 
 function fmtRange(startMs: number, endMs: number) {
   const now = Date.now();
-  const isStale = now - endMs > 300000;
-  
-  if (isStale) {
-    return "New round starting soon...";
+  if (now >= endMs) {
+    return "Awaiting settlement...";
   }
-  
+
   const o: Intl.DateTimeFormatOptions = {
     weekday: "short",
     month: "short",
@@ -127,12 +123,23 @@ export function MarketConsole({ market }: Props) {
 
   const [userPosition, setUserPosition] = useState<UserPositionSnap | null>(null);
   const [positionError, setPositionError] = useState<string | null>(null);
+  const [previousResolvedRound, setPreviousResolvedRound] = useState<MarketRoundDetail | null>(null);
+  const [previousUserPosition, setPreviousUserPosition] = useState<UserPositionSnap | null>(null);
   const [settlePending, setSettlePending] = useState(false);
   const [settleError, setSettleError] = useState<string | null>(null);
   const [settleOk, setSettleOk] = useState<string | null>(null);
   const [claimPending, setClaimPending] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimOk, setClaimOk] = useState<string | null>(null);
+
+  /**
+   * Rolling-mode transient state.
+   * Set to true for up to 6 s when the RPC poll returns `kind:"none"` immediately
+   * after a round was present — this means chain is between SettleAndRoll steps.
+   * Clears automatically once the new `Open` epoch is visible.
+   */
+  const [transientSettling, setTransientSettling] = useState(false);
+  const transientSettlingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const lastFetchAtRef = useRef<number | null>(null);
 
@@ -168,7 +175,51 @@ export function MarketConsole({ market }: Props) {
           account
         );
         if (cancelled) return;
+
+        // Rolling-mode transition detection:
+        // If the previous poll had an active round and now we see none,
+        // the contract is between SettleAndRoll steps (old round snapshotted,
+        // new epoch not yet visible). Show "Settling" for up to 6 s.
+        const prev = roundDetailRef.current;
+        if (d.kind === "none" && prev?.kind === "round") {
+          setTransientSettling(true);
+          if (transientSettlingTimerRef.current) {
+            clearTimeout(transientSettlingTimerRef.current);
+          }
+          transientSettlingTimerRef.current = setTimeout(() => {
+            setTransientSettling(false);
+          }, 6000);
+        } else if (d.kind === "round") {
+          // New epoch visible — clear the transient state immediately.
+          setTransientSettling(false);
+          if (transientSettlingTimerRef.current) {
+            clearTimeout(transientSettlingTimerRef.current);
+            transientSettlingTimerRef.current = null;
+          }
+        }
+
         setRoundDetail(d);
+
+        if (d.kind === "round") {
+          try {
+            const prev = await fetchLatestRoundSnapshotDetail(
+              api,
+              MARKET_PROGRAM_ID,
+              market.assetKey,
+              account
+            );
+            if (cancelled) return;
+            if (prev?.kind === "round" && prev.phase === "Resolved" && prev.id !== d.id) {
+              setPreviousResolvedRound(prev);
+            } else {
+              setPreviousResolvedRound(null);
+            }
+          } catch {
+            if (!cancelled) setPreviousResolvedRound(null);
+          }
+        } else {
+          setPreviousResolvedRound(null);
+        }
 
         if (
           d.kind === "round" &&
@@ -203,8 +254,38 @@ export function MarketConsole({ market }: Props) {
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      if (transientSettlingTimerRef.current) {
+        clearTimeout(transientSettlingTimerRef.current);
+      }
     };
   }, [api, account, market.assetKey, market]);
+
+  useEffect(() => {
+    const prev = previousResolvedRound;
+    if (!api || !MARKET_PROGRAM_ID || !account || prev?.kind !== "round") {
+      setPreviousUserPosition(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = await fetchUserPosition(
+          api,
+          MARKET_PROGRAM_ID,
+          market.assetKey,
+          prev.id,
+          account,
+          account
+        );
+        if (!cancelled) setPreviousUserPosition(p);
+      } catch {
+        if (!cancelled) setPreviousUserPosition(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, account, market.assetKey, previousResolvedRound]);
 
   useEffect(() => {
     let on = true;
@@ -299,30 +380,25 @@ export function MarketConsole({ market }: Props) {
 
   /** Seconds until this **on-chain** round ends (Open only). */
   const timeLeftSec = useMemo((): number | null => {
-    // If no round data, use wall clock
+    // If no round exists yet, show wall-clock window as a neutral placeholder.
     if (!roundDetail || roundDetail.kind !== "round") {
       return wallTimeLeftSec;
     }
-    
-    // If round is Resolved or Locked, return null
+
+    // Locked/Resolved are not actively tradable windows.
     if (roundDetail.phase === "Resolved" || roundDetail.phase === "Locked") {
-      return null;
+      return 0;
     }
-    
-    // If round is Open but ended more than 5 minutes ago, use wall clock
-    const roundEndedAgo = Date.now() - roundDetail.endTs;
-    if (roundEndedAgo > 300000) {
-      return wallTimeLeftSec;
-    }
-    
-    // Active round - show actual countdown
+
+    // Open round uses on-chain end timestamp only.
     return Math.max(0, Math.floor((roundDetail.endTs - Date.now()) / 1000));
   }, [roundDetail, wallTimeLeftSec]);
 
   const resolvedNextOpenInSec = useMemo((): number | null => {
     if (roundDetail?.kind !== "round" || roundDetail.phase !== "Resolved") return null;
     if (!Number.isFinite(roundDetail.endTs) || roundDetail.endTs <= 0) return null;
-    const remainingMs = roundDetail.endTs + SETTLE_TO_START_DELAY_MS - Date.now();
+    // In rolling mode the next epoch opens immediately; no delay to model.
+    const remainingMs = roundDetail.endTs - Date.now();
     return Math.max(0, Math.floor(remainingMs / 1000));
   // `wallTimeLeftSec` ticks every 1s; reuse it so the countdown updates while the round stays `Resolved`.
   }, [roundDetail, wallTimeLeftSec]);
@@ -459,7 +535,41 @@ export function MarketConsole({ market }: Props) {
     return userPosition.sharesDown > 0n;
   }, [viewMode, roundDetail, userPosition]);
 
+  const hasClaimablePreviousWinnings = useMemo(() => {
+    if (
+      viewMode !== "live" ||
+      previousResolvedRound?.kind !== "round" ||
+      previousResolvedRound.phase !== "Resolved" ||
+      previousResolvedRound.outcomeUp === null ||
+      !previousUserPosition
+    ) {
+      return false;
+    }
+    if (previousResolvedRound.outcomeUp) return previousUserPosition.sharesUp > 0n;
+    return previousUserPosition.sharesDown > 0n;
+  }, [viewMode, previousResolvedRound, previousUserPosition]);
+
+  const claimTargetRoundId = useMemo(() => {
+    if (hasClaimableWinnings && roundDetail?.kind === "round") return roundDetail.id;
+    if (hasClaimablePreviousWinnings && previousResolvedRound?.kind === "round") {
+      return previousResolvedRound.id;
+    }
+    return null;
+  }, [hasClaimableWinnings, hasClaimablePreviousWinnings, roundDetail, previousResolvedRound]);
+
+  const showPreviousResolution = useMemo(() => {
+    return (
+      viewMode === "live" &&
+      roundDetail?.kind === "round" &&
+      roundDetail.phase === "Open" &&
+      previousResolvedRound?.kind === "round" &&
+      previousResolvedRound.phase === "Resolved" &&
+      previousResolvedRound.outcomeUp !== null
+    );
+  }, [viewMode, roundDetail, previousResolvedRound]);
+
   const onChainStatusLabel = useMemo(() => {
+    if (transientSettling) return "Settling… new epoch opening";
     if (roundDetail?.kind !== "round") return "No active round";
     const r = roundDetail;
     if (r.phase === "Resolved" && r.outcomeUp !== null) {
@@ -471,7 +581,7 @@ export function MarketConsole({ market }: Props) {
       return "Trading open";
     }
     return r.phase;
-  }, [roundDetail]);
+  }, [roundDetail, transientSettling]);
 
   const onSettle = useCallback(async () => {
     setSettleError(null);
@@ -493,9 +603,18 @@ export function MarketConsole({ market }: Props) {
     setClaimError(null);
     setClaimOk(null);
     if (!api || !account || !MARKET_PROGRAM_ID) return;
+    if (!claimTargetRoundId) {
+      setClaimError("No claimable winning round found.");
+      return;
+    }
     setClaimPending(true);
     try {
-      await submitClaim({ api, account, assetKey: market.assetKey });
+      await submitClaim({
+        api,
+        account,
+        assetKey: market.assetKey,
+        roundId: claimTargetRoundId,
+      });
       setClaimOk("FIN sent to your wallet (check balance).");
       await new Promise((r) => setTimeout(r, 2500));
       await refreshFinBalance();
@@ -504,7 +623,7 @@ export function MarketConsole({ market }: Props) {
     } finally {
       setClaimPending(false);
     }
-  }, [api, account, market.assetKey, refreshFinBalance]);
+  }, [api, account, market.assetKey, refreshFinBalance, claimTargetRoundId]);
 
   const onBuy = useCallback(async () => {
     setTxError(null);
@@ -570,9 +689,11 @@ export function MarketConsole({ market }: Props) {
     txPending ||
     !tick ||
     viewMode === "history" ||
-    awaitingSettlement;
+    awaitingSettlement ||
+    transientSettling; // block buys during rolling epoch transition
 
   const showLiveResolution =
+    !transientSettling &&
     viewMode === "live" &&
     roundDetail?.kind === "round" &&
     roundDetail.phase === "Resolved" &&
@@ -709,8 +830,39 @@ export function MarketConsole({ market }: Props) {
                 </div>
                 <p className="mt-1 text-sm text-mist/80">
                   {fmtRange(roundDetail.startTs, roundDetail.endTs)} · Winners claim FIN from the
-                  pool via <span className="font-mono text-mist">Fin.Claim</span> while this
-                  round is still the active one on-chain.
+                  pool via <span className="font-mono text-mist">Fin.ClaimForRound</span> using
+                  this round id, even after newer rounds open.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {showPreviousResolution && previousResolvedRound?.kind === "round" ? (
+          <div className="mt-6 rounded-2xl border border-white/15 bg-gradient-to-br from-panel to-ink/80 p-5">
+            <div className="flex flex-wrap items-start gap-4">
+              <div
+                className={`grid h-14 w-14 shrink-0 place-items-center rounded-full border-2 ${
+                  previousResolvedRound.outcomeUp
+                    ? "border-shore bg-shore/20 text-shore"
+                    : "border-risk bg-risk/25 text-risk"
+                }`}
+              >
+                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wider text-mist/70">Previous Round Outcome</div>
+                <div
+                  className={`font-display text-2xl ${
+                    previousResolvedRound.outcomeUp ? "text-shore" : "text-risk"
+                  }`}
+                >
+                  Round #{previousResolvedRound.id} · {previousResolvedRound.outcomeUp ? "UP" : "DOWN"}
+                </div>
+                <p className="mt-1 text-sm text-mist/80">
+                  {fmtRange(previousResolvedRound.startTs, previousResolvedRound.endTs)}
                 </p>
               </div>
             </div>
@@ -974,6 +1126,34 @@ export function MarketConsole({ market }: Props) {
                       : "No position in this round."}
                   </p>
                 )}
+                {claimError ? <p className="text-xs text-[#f87171]">{claimError}</p> : null}
+                {claimOk ? <p className="text-xs text-[#39d27d]">{claimOk}</p> : null}
+              </div>
+            ) : null}
+
+            {roundDetail.phase === "Open" && showPreviousResolution && previousResolvedRound?.kind === "round" ? (
+              <div className="mt-3 space-y-2 border-t border-[#1e2a36] pt-3">
+                <p className="text-xs text-[#8fa4b7]">
+                  Previous round #{previousResolvedRound.id} resolved{" "}
+                  <span
+                    className={
+                      previousResolvedRound.outcomeUp ? "font-semibold text-[#39d27d]" : "font-semibold text-[#f87171]"
+                    }
+                  >
+                    {previousResolvedRound.outcomeUp ? "UP" : "DOWN"}
+                  </span>
+                  . You can still claim using that round id.
+                </p>
+                {hasClaimablePreviousWinnings ? (
+                  <button
+                    type="button"
+                    disabled={!account || claimPending}
+                    onClick={() => void onClaim()}
+                    className="w-full py-2.5 text-sm font-semibold text-white bg-[#1a2a1e] border border-[#39d27d]/45 rounded-xl transition hover:bg-[#253528] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {claimPending ? "Signing..." : `Claim FIN (Round #${previousResolvedRound.id})`}
+                  </button>
+                ) : null}
                 {claimError ? <p className="text-xs text-[#f87171]">{claimError}</p> : null}
                 {claimOk ? <p className="text-xs text-[#39d27d]">{claimOk}</p> : null}
               </div>

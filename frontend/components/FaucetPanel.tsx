@@ -55,7 +55,7 @@ export function FaucetPanel() {
         setError(
           [
             "The extrinsic was included in a block, but your FIN balance did not increase — the program handle likely failed after inclusion.",
-            "Most common fix: run Fin.init on this market program (admin). From the repo: cd services/dia-relayer, set BOOTSTRAP_MNEMONIC, RELAYER_MNEMONIC, and MARKET_PROGRAM_ID in .env, then npm run bootstrap. See docs/TESTNET.md.",
+            "Most common fix: run Fin.init on this market program (admin). From the repo: cd backend/finality-oracle, set BOOTSTRAP_MNEMONIC, RELAYER_MNEMONIC, and MARKET_PROGRAM_ID in .env, then npm run bootstrap. See docs/TESTNET.md.",
             `Confirm with: npm run faucet:diagnose -- <your SS58> (repo root). If treasury is empty, run npx tsx scripts/check-market-treasury.ts.`
           ].join("\n\n")
         );
@@ -77,7 +77,7 @@ export function FaucetPanel() {
         );
       } else if (msg.includes("not initialized")) {
         setError(
-          "This market program was never initialized (Fin.init). Run dia-relayer bootstrap or init it in Gear IDEA."
+          "This market program was never initialized (Fin.init). Run Finality Oracle bootstrap or init it in Gear IDEA."
         );
       } else {
         setError(msg);

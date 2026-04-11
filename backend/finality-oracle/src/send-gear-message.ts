@@ -35,6 +35,12 @@ function txTimeoutMs(): number {
   return 90_000;
 }
 
+function waitForFinalized(): boolean {
+  const raw = process.env.GEAR_WAIT_FINALIZED?.trim().toLowerCase();
+  if (!raw) return false;
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 /** Send a `gear.sendMessage` extrinsic, retrying on 1014 with an escalating tip. */
 export async function sendGearMessage(
   api: GearApi,
@@ -42,6 +48,7 @@ export async function sendGearMessage(
   payload: Uint8Array,
   signer: any
 ): Promise<void> {
+  const requireFinalized = waitForFinalized();
   const source = api.registry.createType("AccountId", signer.address).toHex();
   let gasLimit: bigint;
   try {
@@ -112,7 +119,8 @@ export async function sendGearMessage(
             }
             return;
           }
-          if (status?.isFinalized) {
+          const shouldComplete = requireFinalized ? status?.isFinalized : (status?.isInBlock || status?.isFinalized);
+          if (shouldComplete) {
             const messageFailure = hasGearDispatchFailure(events ?? []);
             if (messageFailure) {
               finishReject(new Error(`Gear message dispatch failed: ${messageFailure}`));

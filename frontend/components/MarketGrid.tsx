@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchAllMarketRoundDetails, type MarketRoundSnapshot, type MarketRoundDetail } from "@/lib/fin-get-round";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
 import { MARKETS, type MarketMeta } from "@/lib/markets";
 import { useWallet } from "@/lib/wallet";
 import { MarketCard, type PoolData, type SportsCardData } from "@/components/MarketCard";
-import { binanceSymbolForMarket, fetchHistoricalKlines, type Kline } from "@/lib/binance";
+import { binanceSymbolForMarket, fetchHistoricalKlines } from "@/lib/binance";
 import { fetchTradableMarkets } from "@/lib/market-discovery";
 
 const COIN_ICONS: Record<string, string> = {
@@ -43,48 +43,29 @@ const COIN_ICONS: Record<string, string> = {
   aave: "https://assets.coingecko.com/coins/images/12645/small/AAVE.png"
 };
 
-type PriceChange = { percent: number; direction: "up" | "down" } | null;
-
-async function fetch5MinPriceChange(diaSymbol: string): Promise<PriceChange> {
-  try {
-    const binanceSym = binanceSymbolForMarket({ diaSymbol, binanceSymbol: undefined });
-    const klines = await fetchHistoricalKlines(binanceSym, "5m", 2);
-    if (klines.length < 2) return null;
-    
-    const currentClose = klines[klines.length - 1].close;
-    const oldOpen = klines[klines.length - 2].open;
-    
-    if (oldOpen === 0) return null;
-    
-    const percentChange = ((currentClose - oldOpen) / oldOpen) * 100;
-    return {
-      percent: Math.abs(percentChange),
-      direction: percentChange >= 0 ? "up" : "down"
-    };
-  } catch {
-    return null;
-  }
-}
-
-function badgeColorClass(
-  snap: MarketRoundSnapshot | "error" | undefined
-): string {
-  if (snap === undefined) return "border-line bg-ink/40 text-mist/70";
-  if (snap === "error") return "border-risk/40 bg-risk/10 text-risk";
-  if (snap.kind === "none") return "border-line bg-ink/40 text-mist/60";
-  switch (snap.phase) {
-    case "Open":
-      return "border-shore/40 bg-shore/10 text-shore";
-    case "Locked":
-      return "border-ember/35 bg-ember/10 text-ember";
-    case "Resolved":
-      return "border-mist/30 bg-ink/60 text-mist";
-    default:
-      return "border-line bg-ink/40 text-mist";
-  }
-}
-
 const POLL_MS = 8_000;
+
+const CATEGORY_TOPICS = [
+  "crypto",
+  "sports",
+  "esports",
+  "politics",
+  "tech",
+  "finance",
+  "economy",
+  "culture",
+] as const;
+
+const TOPIC_LABELS: Record<(typeof CATEGORY_TOPICS)[number], string> = {
+  crypto: "Crypto",
+  sports: "Sports",
+  esports: "Esports",
+  politics: "Politics",
+  tech: "Tech",
+  finance: "Finance",
+  economy: "Economy",
+  culture: "Culture",
+};
 
 function computePoolData(detail: MarketRoundDetail | "error" | undefined): PoolData | undefined {
   if (!detail || detail === "error" || detail.kind === "none") return undefined;
@@ -112,6 +93,7 @@ function computePoolData(detail: MarketRoundDetail | "error" | undefined): PoolD
 type PhaseMap = Record<string, MarketRoundSnapshot | "error">;
 type DetailMap = Record<string, MarketRoundDetail | "error">;
 type SportsMap = Record<string, SportsCardData>;
+type SparkMap = Record<string, string>;
 
 type ApiParticipant = {
   name?: string;
@@ -133,22 +115,49 @@ function sportFixtureId(assetKey: string): number | null {
   return Number.isFinite(id) ? id : null;
 }
 
+function toSparklinePoints(closes: number[]): string | null {
+  if (closes.length < 2) return null;
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const range = max - min || 1;
+
+  return closes
+    .map((price, i) => {
+      const x = 10 + i * (200 / (closes.length - 1));
+      const normalized = (price - min) / range;
+      const y = 30 - normalized * 20;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
 export function MarketGrid() {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { api, account } = useWallet();
   const [markets, setMarkets] = useState<MarketMeta[]>(MARKETS);
   const [phases, setPhases] = useState<PhaseMap>({});
   const [details, setDetails] = useState<DetailMap>({});
   const [sportsBySlug, setSportsBySlug] = useState<SportsMap>({});
+  const [sparkBySlug, setSparkBySlug] = useState<SparkMap>({});
+  const [topicsExpanded, setTopicsExpanded] = useState(true);
+
+  const selectedTopic = (searchParams.get("topic") ?? "crypto").toLowerCase();
+
+  const onTopicSelect = (topic: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("topic", topic);
+    router.push(`${pathname}?${params.toString()}`);
+  };
 
   const displayMarkets = useMemo(() => {
-    const topic = (searchParams.get("topic") ?? "crypto").toLowerCase();
-    const isSportsTopic = topic === "sports" || topic === "esports";
+    const isSportsTopic = selectedTopic === "sports" || selectedTopic === "esports";
     if (isSportsTopic) {
       return markets.filter((m) => m.assetKey.startsWith("SPORT/"));
     }
-    return markets;
-  }, [markets, searchParams]);
+    return markets.filter((m) => !m.assetKey.startsWith("SPORT/"));
+  }, [markets, selectedTopic]);
 
   useEffect(() => {
     if (!api || !MARKET_PROGRAM_ID) {
@@ -229,6 +238,45 @@ export function MarketGrid() {
   }, [markets]);
 
   useEffect(() => {
+    const cryptoMarkets = markets.filter((m) => !m.assetKey.startsWith("SPORT/"));
+    if (cryptoMarkets.length === 0) {
+      setSparkBySlug({});
+      return;
+    }
+
+    let cancelled = false;
+    const run = async () => {
+      const settled = await Promise.all(
+        cryptoMarkets.map(async (m) => {
+          try {
+            const symbol = binanceSymbolForMarket(m);
+            const klines = await fetchHistoricalKlines(symbol, "5m", 12);
+            const closes = klines.map((k) => k.close).filter((v) => Number.isFinite(v) && v > 0);
+            const points = toSparklinePoints(closes);
+            return [m.slug, points] as const;
+          } catch {
+            return [m.slug, null] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      const next: SparkMap = {};
+      for (const [slug, points] of settled) {
+        if (points) next[slug] = points;
+      }
+      setSparkBySlug(next);
+    };
+
+    void run();
+    const id = window.setInterval(() => void run(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [markets]);
+
+  useEffect(() => {
     if (!api || !MARKET_PROGRAM_ID) {
       return;
     }
@@ -278,19 +326,68 @@ export function MarketGrid() {
   }, [api, account, markets]);
 
   return (
-    <section className="mx-auto max-w-6xl px-2 sm:px-4 pb-8 sm:pb-12 md:pb-16 pt-4 sm:pt-6 md:pt-8">
-      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3">
-        {displayMarkets.map((m) => (
-          <MarketCard
-            key={m.slug}
-            market={m}
-            phase={phases[m.slug]}
-            connected={!!api && !!MARKET_PROGRAM_ID}
-            imageUrl={COIN_ICONS[m.slug]}
-            poolData={computePoolData(details[m.slug])}
-            sportsData={sportsBySlug[m.slug]}
-          />
-        ))}
+    <section className="mx-auto max-w-[1300px] px-2 pb-8 pt-4 sm:px-4 sm:pb-12 sm:pt-6 md:pb-16 md:pt-8">
+      <div className="flex items-start gap-4 lg:gap-6">
+        <aside
+          className={`sticky top-24 self-start rounded-2xl border border-line/70 bg-panel/70 p-2 backdrop-blur-md transition-all duration-300 ${
+            topicsExpanded ? "w-56" : "w-16"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => setTopicsExpanded((v) => !v)}
+            className="mb-2 flex w-full items-center justify-between rounded-xl px-2 py-2 text-left text-[12px] font-semibold text-mist hover:bg-line/30 hover:text-white"
+          >
+            {topicsExpanded ? <span>Categories</span> : <span className="mx-auto">Cat</span>}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              className={`transition-transform ${topicsExpanded ? "" : "rotate-180"}`}
+            >
+              <path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+
+          <div className="space-y-1">
+            {CATEGORY_TOPICS.map((topic) => {
+              const active = selectedTopic === topic;
+              return (
+                <button
+                  key={topic}
+                  type="button"
+                  onClick={() => onTopicSelect(topic)}
+                  className={`flex w-full items-center rounded-xl px-2 py-2 text-[12px] font-medium transition ${
+                    active
+                      ? "bg-shore/15 text-shore border border-shore/30"
+                      : "border border-transparent text-mist hover:bg-line/30 hover:text-white"
+                  } ${topicsExpanded ? "justify-start" : "justify-center"}`}
+                  title={TOPIC_LABELS[topic]}
+                >
+                  {topicsExpanded ? TOPIC_LABELS[topic] : TOPIC_LABELS[topic].slice(0, 1)}
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+
+        <div className="min-w-0 flex-1">
+          <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {displayMarkets.map((m) => (
+              <MarketCard
+                key={m.slug}
+                market={m}
+                phase={phases[m.slug]}
+                connected={!!api && !!MARKET_PROGRAM_ID}
+                imageUrl={COIN_ICONS[m.slug]}
+                poolData={computePoolData(details[m.slug])}
+                sportsData={sportsBySlug[m.slug]}
+                sparklinePoints={sparkBySlug[m.slug]}
+              />
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   );

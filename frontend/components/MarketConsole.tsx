@@ -1,7 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { binanceSymbolForMarket, fetchBinanceSpotPrice } from "@/lib/binance";
+import { binanceSymbolForMarket, fetchBinanceSpotPrice, fetchHistoricalKlines } from "@/lib/binance";
 import type { MarketMeta } from "@/lib/markets";
 import { MARKET_PROGRAM_ID } from "@/lib/config";
 import { useWallet } from "@/lib/wallet";
@@ -54,6 +55,62 @@ type Props = { market: MarketMeta };
 
 type Tick = { human: number; publishTime: number };
 
+type PropositionAsset = {
+  symbol: string;
+  pair: string;
+  slug: string;
+};
+
+type PropositionRow = {
+  symbol: string;
+  slug: string;
+  price: number | null;
+  change24h: number | null;
+  sparkPoints: string;
+};
+
+const PROPOSITION_ASSETS: PropositionAsset[] = [
+  { symbol: "BTC", pair: "BTCUSDT", slug: "btc" },
+  { symbol: "ETH", pair: "ETHUSDT", slug: "eth" },
+  { symbol: "BNB", pair: "BNBUSDT", slug: "bnb" },
+  { symbol: "SOL", pair: "SOLUSDT", slug: "sol" },
+  { symbol: "XRP", pair: "XRPUSDT", slug: "xrp" },
+  { symbol: "ADA", pair: "ADAUSDT", slug: "ada" },
+];
+
+const ASSET_LOGOS: Record<string, string> = {
+  btc: "https://assets.coingecko.com/coins/images/1/small/bitcoin.png",
+  eth: "https://assets.coingecko.com/coins/images/279/small/ethereum.png",
+  sol: "https://assets.coingecko.com/coins/images/4128/small/solana.png",
+  bnb: "https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2.png",
+  avax: "https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png",
+  ton: "https://assets.coingecko.com/coins/images/17980/small/ton_symbol.png",
+  sui: "https://cryptologos.cc/logos/sui-sui-logo.png?v=040",
+  doge: "https://assets.coingecko.com/coins/images/5/small/dogecoin.png",
+  xrp: "https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-888.png",
+  ada: "https://assets.coingecko.com/coins/images/975/small/cardano.png",
+  dot: "https://assets.coingecko.com/coins/images/12171/small/polkadot.png",
+  link: "https://assets.coingecko.com/coins/images/877/small/chainlink-new-logo.png",
+  ltc: "https://assets.coingecko.com/coins/images/2/small/litecoin.png",
+  matic: "https://assets.coingecko.com/coins/images/4713/small/polygon.png",
+  arb: "https://assets.coingecko.com/coins/images/16547/small/photo_2023-03-29_21.47.00.png",
+  op: "https://assets.coingecko.com/coins/images/25244/small/Optimism.png",
+  near: "https://assets.coingecko.com/coins/images/10365/small/near.jpg",
+  fil: "https://assets.coingecko.com/coins/images/12817/small/filecoin.png",
+  atom: "https://assets.coingecko.com/coins/images/1481/small/cosmos_hub.png",
+  inj: "https://assets.coingecko.com/coins/images/12882/small/Secondary_Symbol.png",
+  tia: "https://assets.coingecko.com/coins/images/31967/small/tia.jpg",
+  sei: "https://assets.coingecko.com/coins/images/28285/small/Sei_Logo_-_Transparent.png",
+  wld: "https://assets.coingecko.com/coins/images/31069/small/worldcoin.jpeg",
+  pepe: "https://assets.coingecko.com/coins/images/29850/small/pepe-token.jpeg",
+  shib: "https://assets.coingecko.com/coins/images/11939/small/shiba.png",
+  trx: "https://assets.coingecko.com/coins/images/1094/small/tron-logo.png",
+  bch: "https://assets.coingecko.com/coins/images/780/small/bitcoin-cash-circle.png",
+  etc: "https://assets.coingecko.com/coins/images/453/small/ethereum-classic-logo.png",
+  uni: "https://assets.coingecko.com/coins/images/12504/small/uni.jpg",
+  aave: "https://assets.coingecko.com/coins/images/12645/small/AAVE.png",
+};
+
 const ROUND_MS = 5 * 60 * 1000;
 // Rolling mode: no gap between settle and next open epoch.
 // SETTLE_TO_START_DELAY_MS is kept at 0 and removed from UI logic.
@@ -93,8 +150,35 @@ function tryFinHumanToBase(s: string): bigint | null {
   }
 }
 
+function buildSparklinePoints(prices: number[]): string {
+  if (prices.length < 2) return "0,18 60,16 120,20 180,14 240,12";
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  return prices
+    .map((price, i) => {
+      const x = (i / (prices.length - 1)) * 240;
+      const y = 30 - ((price - min) / range) * 22;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function formatBaseUnits(base: bigint, decimals: number): string {
+  const n = Number(base) / 10 ** decimals;
+  if (!Number.isFinite(n)) return "0.00";
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatDecimalText(v: string | null): string {
+  if (!v) return "--";
+  const n = Number(v);
+  if (!Number.isFinite(n)) return v;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function MarketConsole({ market }: Props) {
-  const { account, api, refreshFinBalance } = useWallet();
+  const { account, api, finBalance, finBalanceLoading, refreshFinBalance } = useWallet();
   const [tick, setTick] = useState<Tick | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [priceToBeat, setPriceToBeat] = useState<number | null>(null);
@@ -131,6 +215,9 @@ export function MarketConsole({ market }: Props) {
   const [claimPending, setClaimPending] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [claimOk, setClaimOk] = useState<string | null>(null);
+  const [propositionRows, setPropositionRows] = useState<PropositionRow[]>([]);
+  const [tVaraBalance, setTVaraBalance] = useState<string | null>(null);
+  const [tVaraLoading, setTVaraLoading] = useState(false);
 
   /**
    * Rolling-mode transient state.
@@ -144,6 +231,7 @@ export function MarketConsole({ market }: Props) {
   const lastFetchAtRef = useRef<number | null>(null);
 
   const binancePair = useMemo(() => binanceSymbolForMarket(market), [market]);
+  const marketLogo = ASSET_LOGOS[market.slug.toLowerCase()];
 
   roundDetailRef.current = roundDetail;
 
@@ -334,6 +422,95 @@ export function MarketConsole({ market }: Props) {
       window.clearInterval(id);
     };
   }, [binancePair]);
+
+  useEffect(() => {
+    if (!api || !account) {
+      setTVaraBalance(null);
+      setTVaraLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    const readTVara = async () => {
+      try {
+        setTVaraLoading(true);
+        const accInfo = await (api.query as any).system.account(account);
+        if (cancelled) return;
+        const freeRaw = accInfo?.data?.free;
+        const free = typeof freeRaw?.toBigInt === "function"
+          ? freeRaw.toBigInt()
+          : BigInt(freeRaw?.toString?.() ?? "0");
+        const chainDecimals = Array.isArray((api.registry as any).chainDecimals)
+          ? Number((api.registry as any).chainDecimals[0] ?? 12)
+          : 12;
+        setTVaraBalance(formatBaseUnits(free, chainDecimals));
+      } catch {
+        if (!cancelled) setTVaraBalance(null);
+      } finally {
+        if (!cancelled) setTVaraLoading(false);
+      }
+    };
+
+    void readTVara();
+    const id = window.setInterval(() => void readTVara(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [api, account]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPropositionRows = async () => {
+      const rows = await Promise.all(
+        PROPOSITION_ASSETS.map(async (asset) => {
+          try {
+            const [tickerRes, klines] = await Promise.all([
+              fetch(`https://api.binance.com/api/v3/ticker/24hr?symbol=${asset.pair}`, { cache: "no-store" }),
+              fetchHistoricalKlines(asset.pair, "4h", 42),
+            ]);
+
+            let price: number | null = null;
+            let change24h: number | null = null;
+            if (tickerRes.ok) {
+              const ticker = (await tickerRes.json()) as { lastPrice?: string; priceChangePercent?: string };
+              const p = ticker.lastPrice ? Number(ticker.lastPrice) : NaN;
+              const c = ticker.priceChangePercent ? Number(ticker.priceChangePercent) : NaN;
+              price = Number.isFinite(p) ? p : null;
+              change24h = Number.isFinite(c) ? c : null;
+            }
+
+            const closes = klines.map((k) => k.close).filter((v) => Number.isFinite(v) && v > 0);
+            return {
+              symbol: asset.symbol,
+              slug: asset.slug,
+              price,
+              change24h,
+              sparkPoints: buildSparklinePoints(closes),
+            } as PropositionRow;
+          } catch {
+            return {
+              symbol: asset.symbol,
+              slug: asset.slug,
+              price: null,
+              change24h: null,
+              sparkPoints: buildSparklinePoints([]),
+            } as PropositionRow;
+          }
+        })
+      );
+
+      if (!cancelled) setPropositionRows(rows);
+    };
+
+    void loadPropositionRows();
+    const id = window.setInterval(() => void loadPropositionRows(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
 
   const loadTrades = useCallback(async () => {
     if (!api || !MARKET_PROGRAM_ID) {
@@ -750,8 +927,19 @@ export function MarketConsole({ market }: Props) {
       <section className="rounded-2xl sm:rounded-3xl border border-[#1e2f41] bg-[linear-gradient(180deg,#0f1822_0%,#0d1721_100%)] p-4 sm:p-5 md:p-6">
         <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3 sm:gap-5">
           <div className="flex items-start gap-2 sm:gap-3">
-            <div className="grid h-10 w-10 sm:h-12 sm:w-12 place-items-center rounded-lg sm:rounded-xl bg-[#f49b22] text-2xl sm:text-3xl font-black text-white">
-              {market.short.slice(0, 1)}
+            <div className="relative grid h-10 w-10 sm:h-12 sm:w-12 place-items-center overflow-hidden rounded-lg sm:rounded-xl border border-[#2b4358] bg-[#101b26] text-2xl sm:text-3xl font-black text-white">
+              <span className="pointer-events-none absolute inset-0 grid place-items-center">
+                {market.short.slice(0, 1)}
+              </span>
+              {marketLogo ? (
+                <Image
+                  src={marketLogo}
+                  alt={market.label}
+                  fill
+                  unoptimized
+                  className="relative z-10 object-contain p-1.5 sm:p-2"
+                />
+              ) : null}
             </div>
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight text-white md:text-[2.25rem]">{market.label} Up or Down</h1>
@@ -990,32 +1178,161 @@ export function MarketConsole({ market }: Props) {
           </div>
         </div>
 
-        <div className="mt-6 rounded-3xl border border-[#223447] bg-[#0f1822] p-3 sm:p-4">
-          <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs text-mist/70">
-            <span className="font-medium text-mist">
-              {viewMode === "history" ? "Previous market price path" : "Live price chart"}
-            </span>
-            <span>{viewMode === "history" ? "Reference only" : `Binance spot · ${binancePair}`}</span>
+        <div className="mt-6 grid gap-3 lg:grid-cols-[320px_1fr]">
+          <div className="relative overflow-hidden rounded-3xl border border-[#26384a] bg-[linear-gradient(180deg,#121f2c_0%,#0d1721_100%)] p-4 sm:p-5">
+            <div className="pointer-events-none absolute right-0 top-0 h-14 w-24 rounded-bl-[24px] border-b border-l border-[#2a4155] bg-[#0b141d]" />
+            <div className="pointer-events-none absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-[#2e4a63] bg-[#122232] text-[#8da7be]">
+              <span className="text-sm leading-none">•••</span>
+            </div>
+
+            <div className="relative pr-16">
+              <div className="text-sm font-semibold text-[#dbe7f3]">My Balance</div>
+              <div className="mt-2 font-mono text-3xl font-semibold text-white sm:text-[2.2rem]">
+                {account
+                  ? `$${
+                      Number((tVaraBalance && Number.isFinite(Number(tVaraBalance)) ? Number(tVaraBalance) : 0) +
+                        (finBalance && Number.isFinite(Number(finBalance)) ? Number(finBalance) : 0)).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    }`
+                  : "--"}
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="flex items-center justify-between rounded-xl border border-[#263a4f] bg-[#101b27] px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-7 w-7 place-items-center rounded-full border border-[#2f4d66] bg-[#132536] text-[11px] font-semibold text-[#8ec8ff]">V</span>
+                  <div>
+                    <div className="text-sm font-medium text-[#e7f0fa]">tVARA</div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#6f8397]">VARA</div>
+                  </div>
+                </div>
+                <div className="font-mono text-sm font-semibold text-white">
+                  {account ? (tVaraLoading ? "..." : `${tVaraBalance ?? "--"}`) : "--"}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-xl border border-[#263a4f] bg-[#101b27] px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-7 w-7 place-items-center rounded-full border border-[#2f4d66] bg-[#132536] text-[11px] font-semibold text-[#f6b861]">F</span>
+                  <div>
+                    <div className="text-sm font-medium text-[#e7f0fa]">FIN</div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-[#6f8397]">FIN</div>
+                  </div>
+                </div>
+                <div className="font-mono text-sm font-semibold text-white">
+                  {account ? (finBalanceLoading ? "..." : formatDecimalText(finBalance)) : "--"}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="relative mt-3 h-[260px] overflow-hidden rounded-2xl border border-[#223447] bg-[#0b141d] p-1.5 sm:h-72 sm:p-2 md:h-80">
-            <PriceChart
-              points={chartPointsLive}
-              priceToBeat={chartBeat}
-              livePrice={chartLive}
-              beatLineLabel={
-                viewMode === "history"
-                  ? `Start ${chartBeat != null ? fmtUsd(chartBeat) : ""}`
-                  : undefined
-              }
-              caption={
-                viewMode === "history"
-                  ? previousOutcome?.source === "chain"
-                    ? "On-chain previous round snapshot."
-                    : "Saved samples from this browser during that round."
-                  : undefined
-              }
-              symbol={binancePair}
-            />
+
+          <div className="rounded-3xl border border-[#223447] bg-[#0f1822] p-3 sm:p-4">
+            <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs text-mist/70">
+              <span className="font-medium text-mist">
+                {viewMode === "history" ? "Previous market price path" : "Live price chart"}
+              </span>
+              <span>{viewMode === "history" ? "Reference only" : `Binance spot · ${binancePair}`}</span>
+            </div>
+            <div className="relative mt-3 h-[260px] overflow-hidden rounded-2xl border border-[#223447] bg-[#0b141d] p-1.5 sm:h-72 sm:p-2 md:h-80">
+              <PriceChart
+                points={chartPointsLive}
+                priceToBeat={chartBeat}
+                livePrice={chartLive}
+                beatLineLabel={
+                  viewMode === "history"
+                    ? `Start ${chartBeat != null ? fmtUsd(chartBeat) : ""}`
+                    : undefined
+                }
+                caption={
+                  viewMode === "history"
+                    ? previousOutcome?.source === "chain"
+                      ? "On-chain previous round snapshot."
+                      : "Saved samples from this browser during that round."
+                    : undefined
+                }
+                symbol={binancePair}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-[#21374b] bg-[linear-gradient(180deg,#111c28_0%,#0d1721_100%)] p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm sm:text-base font-semibold text-[#dbe7f3]">Proposition to buy</h3>
+            <span className="rounded-lg border border-[#2b4359] bg-[#122131] px-2.5 py-1 text-[11px] font-medium text-[#8fa6bb]">
+              Sort
+            </span>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full text-xs sm:text-sm">
+              <thead>
+                <tr className="text-left text-[#72879b]">
+                  <th className="pb-2 pr-4 font-medium">Currency</th>
+                  <th className="pb-2 pr-4 font-medium">Price</th>
+                  <th className="pb-2 pr-4 font-medium">7 Days Market</th>
+                  <th className="pb-2 pr-4 font-medium">24H Change</th>
+                  <th className="pb-2 font-medium text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {propositionRows.map((row) => {
+                  const change = row.change24h;
+                  const up = change != null && change >= 0;
+                  const rowLogo = ASSET_LOGOS[row.slug.toLowerCase()];
+                  return (
+                    <tr key={row.symbol} className="border-t border-[#1c2f42]/70">
+                      <td className="py-2.5 pr-4 text-[#e7f0fa] font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="relative grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full border border-[#2c4258] bg-[#101b26]">
+                            {rowLogo ? (
+                              <Image
+                                src={rowLogo}
+                                alt={row.symbol}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            ) : (
+                              <span className="text-[9px] font-semibold text-[#d0deea]">{row.symbol.slice(0, 1)}</span>
+                            )}
+                          </span>
+                          <span>{row.symbol}</span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-4 text-[#c7d6e5]">
+                        {row.price != null ? `$${row.price.toLocaleString(undefined, { maximumFractionDigits: row.price > 100 ? 2 : 6 })}` : "--"}
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        <svg viewBox="0 0 240 34" className="h-8 w-[120px] sm:w-[150px]" fill="none" aria-hidden="true">
+                          <polyline
+                            points={row.sparkPoints}
+                            stroke={up ? "#39d27d" : "#f26b73"}
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </td>
+                      <td className={`py-2.5 pr-4 font-semibold ${up ? "text-[#39d27d]" : "text-[#f26b73]"}`}>
+                        {change != null ? `${up ? "↗" : "↘"}${Math.abs(change).toFixed(2)}%` : "--"}
+                      </td>
+                      <td className="py-2.5 text-right">
+                        <a
+                          href={`/market/${row.slug}`}
+                          className="inline-flex items-center rounded-full border border-[#226bc8] bg-[#153d71] px-3 py-1 text-xs font-semibold text-[#b8dcff] transition hover:bg-[#1b4e8e]"
+                        >
+                          Trade
+                        </a>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 

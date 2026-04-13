@@ -376,8 +376,6 @@ export function MarketConsole({ market }: Props) {
     return () => window.clearInterval(id);
   }, []);
 
-  const hasHistory = historyRecords.length > 0;
-
   /** Seconds until this **on-chain** round ends (Open only). */
   const timeLeftSec = useMemo((): number | null => {
     // If no round exists yet, show wall-clock window as a neutral placeholder.
@@ -417,6 +415,44 @@ export function MarketConsole({ market }: Props) {
     }
     return historyRecords[0];
   }, [historyRecords, selectedHistoryId]);
+
+  const previousOutcome = useMemo(() => {
+    if (
+      previousResolvedRound?.kind === "round" &&
+      previousResolvedRound.phase === "Resolved" &&
+      previousResolvedRound.outcomeUp !== null
+    ) {
+      const points =
+        selectedPast?.roundId === previousResolvedRound.id
+          ? selectedPast.chartPoints
+          : [];
+      return {
+        id: previousResolvedRound.id,
+        outcomeUp: previousResolvedRound.outcomeUp,
+        startTs: previousResolvedRound.startTs,
+        endTs: previousResolvedRound.endTs,
+        startPriceHuman: previousResolvedRound.startPriceHuman,
+        endPriceHuman: previousResolvedRound.endPriceHuman,
+        chartPoints: points,
+        source: "chain" as const
+      };
+    }
+
+    if (selectedPast) {
+      return {
+        id: selectedPast.roundId,
+        outcomeUp: selectedPast.outcomeUp,
+        startTs: selectedPast.startTs,
+        endTs: selectedPast.endTs,
+        startPriceHuman: selectedPast.startPriceHuman,
+        endPriceHuman: selectedPast.endPriceHuman,
+        chartPoints: selectedPast.chartPoints,
+        source: "local" as const
+      };
+    }
+
+    return null;
+  }, [previousResolvedRound, selectedPast]);
 
   useEffect(() => {
     if (viewMode === "history" && historyRecords.length && !selectedHistoryId) {
@@ -699,14 +735,14 @@ export function MarketConsole({ market }: Props) {
     roundDetail.phase === "Resolved" &&
     roundDetail.outcomeUp !== null;
 
-  const chartPointsLive = viewMode === "live" ? history : selectedPast?.chartPoints ?? [];
+  const chartPointsLive = viewMode === "live" ? history : previousOutcome?.chartPoints ?? [];
   const chartBeat =
-    viewMode === "history" && selectedPast
-      ? selectedPast.startPriceHuman
+    viewMode === "history" && previousOutcome
+      ? previousOutcome.startPriceHuman
       : effectivePriceToBeat;
   const chartLive =
-    viewMode === "history" && selectedPast
-      ? selectedPast.endPriceHuman ?? selectedPast.chartPoints.at(-1)?.price ?? null
+    viewMode === "history" && previousOutcome
+      ? previousOutcome.endPriceHuman ?? previousOutcome.chartPoints.at(-1)?.price ?? null
       : tick?.human ?? null;
 
   return (
@@ -728,47 +764,33 @@ export function MarketConsole({ market }: Props) {
           </div>
 
           <div className="flex items-start gap-4 sm:gap-8 mt-2 sm:mt-0">
-            {hasHistory && (
-              <div className="flex items-center gap-2">
-                <div className="flex rounded-lg border border-[#2a3b4b] overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("live")}
-                    className={`px-3 py-1.5 text-xs font-medium transition ${
-                      viewMode === "live"
-                        ? "bg-[#2d475f] text-white"
-                        : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
-                    }`}
-                  >
-                    Live
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("history")}
-                    className={`px-3 py-1.5 text-xs font-medium transition ${
-                      viewMode === "history"
-                        ? "bg-[#2d475f] text-white"
-                        : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
-                    }`}
-                  >
-                    History
-                  </button>
-                </div>
-                {viewMode === "history" && historyRecords.length > 1 && (
-                  <select
-                    value={selectedHistoryId || ""}
-                    onChange={(e) => setSelectedHistoryId(e.target.value)}
-                    className="bg-[#111b25] text-white text-xs px-2 py-1.5 rounded-lg border border-[#2a3b4b] cursor-pointer"
-                  >
-                    {historyRecords.map((r) => (
-                      <option key={r.roundId} value={r.roundId}>
-                        Round #{r.roundId}
-                      </option>
-                    ))}
-                  </select>
-                )}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-[#2a3b4b] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("live")}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                    viewMode === "live"
+                      ? "bg-[#2d475f] text-white"
+                      : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
+                  }`}
+                >
+                  Live Market
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("history")}
+                  disabled={!previousOutcome}
+                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                    viewMode === "history"
+                      ? "bg-[#2d475f] text-white"
+                      : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  Previous Market
+                </button>
               </div>
-            )}
+            </div>
             <div className="text-right">
               <div className="font-mono text-3xl sm:text-4xl font-semibold text-[#ff4c55] md:text-[2.6rem]">
                 {timeLeftSec !== null
@@ -838,12 +860,12 @@ export function MarketConsole({ market }: Props) {
           </div>
         ) : null}
 
-        {showPreviousResolution && previousResolvedRound?.kind === "round" ? (
+        {viewMode === "history" && previousOutcome ? (
           <div className="mt-6 rounded-2xl border border-white/15 bg-gradient-to-br from-panel to-ink/80 p-5">
             <div className="flex flex-wrap items-start gap-4">
               <div
                 className={`grid h-14 w-14 shrink-0 place-items-center rounded-full border-2 ${
-                  previousResolvedRound.outcomeUp
+                  previousOutcome.outcomeUp
                     ? "border-shore bg-shore/20 text-shore"
                     : "border-risk bg-risk/25 text-risk"
                 }`}
@@ -856,48 +878,23 @@ export function MarketConsole({ market }: Props) {
                 <div className="text-xs uppercase tracking-wider text-mist/70">Previous Round Outcome</div>
                 <div
                   className={`font-display text-2xl ${
-                    previousResolvedRound.outcomeUp ? "text-shore" : "text-risk"
+                    previousOutcome.outcomeUp ? "text-shore" : "text-risk"
                   }`}
                 >
-                  Round #{previousResolvedRound.id} · {previousResolvedRound.outcomeUp ? "UP" : "DOWN"}
+                  Round #{previousOutcome.id} · {previousOutcome.outcomeUp ? "UP" : "DOWN"}
                 </div>
                 <p className="mt-1 text-sm text-mist/80">
-                  {fmtRange(previousResolvedRound.startTs, previousResolvedRound.endTs)}
+                  {fmtRange(previousOutcome.startTs, previousOutcome.endTs)}
+                  {previousOutcome.source === "local" ? " · Saved in this browser only." : ""}
                 </p>
               </div>
             </div>
           </div>
         ) : null}
 
-        {viewMode === "history" && selectedPast ? (
-          <div className="mt-6 rounded-2xl border border-white/15 bg-gradient-to-br from-panel to-ink/80 p-5">
-            <div className="flex flex-wrap items-start gap-4">
-              <div
-                className={`grid h-14 w-14 shrink-0 place-items-center rounded-full border-2 ${
-                  selectedPast.outcomeUp
-                    ? "border-shore bg-shore/20 text-shore"
-                    : "border-risk bg-risk/25 text-risk"
-                }`}
-              >
-                <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-wider text-mist/70">Outcome</div>
-                <div
-                  className={`font-display text-2xl ${
-                    selectedPast.outcomeUp ? "text-shore" : "text-risk"
-                  }`}
-                >
-                  {selectedPast.outcomeUp ? "UP" : "DOWN"}
-                </div>
-                <p className="mt-1 text-sm text-mist/80">
-                  {fmtRange(selectedPast.startTs, selectedPast.endTs)} · Saved in this browser
-                  only.
-                </p>
-              </div>
-            </div>
+        {viewMode === "history" && !previousOutcome ? (
+          <div className="mt-6 rounded-2xl border border-white/10 bg-ink/40 p-4 text-sm text-mist/80">
+            Previous market outcome is not available yet.
           </div>
         ) : null}
 
@@ -932,13 +929,13 @@ export function MarketConsole({ market }: Props) {
 
           <div className="rounded-2xl border border-line bg-ink/35 p-4">
             <div className="text-xs font-medium text-mist/80">
-              {viewMode === "history" ? "Settlement price (oracle)" : "Live price (Binance)"}
+              {viewMode === "history" ? "Previous settlement price (oracle)" : "Live price (Binance)"}
             </div>
             <div className="mt-2 font-mono text-3xl text-white md:text-4xl">
-              {viewMode === "history" && selectedPast?.endPriceHuman != null ? (
+              {viewMode === "history" && previousOutcome?.endPriceHuman != null ? (
                 <>
                   <span className="text-lg text-mist/60">$</span>
-                  {fmtUsd(selectedPast.endPriceHuman)}
+                  {fmtUsd(previousOutcome.endPriceHuman)}
                 </>
               ) : tick ? (
                 <>
@@ -954,16 +951,16 @@ export function MarketConsole({ market }: Props) {
             <div className="mt-2 text-xs text-mist/70">
               {viewMode === "history" ? (
                 <>
-                  {selectedPast && selectedPast.endPriceHuman != null ? (
+                  {previousOutcome && previousOutcome.endPriceHuman != null ? (
                     <span
                       className={
-                        selectedPast.endPriceHuman >= selectedPast.startPriceHuman
+                        previousOutcome.endPriceHuman >= previousOutcome.startPriceHuman
                           ? "text-shore"
                           : "text-risk"
                       }
                     >
                       Δ{" "}
-                      {fmtUsd(selectedPast.endPriceHuman - selectedPast.startPriceHuman)} vs start
+                      {fmtUsd(previousOutcome.endPriceHuman - previousOutcome.startPriceHuman)} vs start
                     </span>
                   ) : (
                     "—"
@@ -996,7 +993,7 @@ export function MarketConsole({ market }: Props) {
         <div className="mt-6 rounded-3xl border border-[#223447] bg-[#0f1822] p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-1.5 text-xs text-mist/70">
             <span className="font-medium text-mist">
-              {viewMode === "history" ? "Price path (saved session)" : "Live price chart"}
+              {viewMode === "history" ? "Previous market price path" : "Live price chart"}
             </span>
             <span>{viewMode === "history" ? "Reference only" : `Binance spot · ${binancePair}`}</span>
           </div>
@@ -1012,7 +1009,9 @@ export function MarketConsole({ market }: Props) {
               }
               caption={
                 viewMode === "history"
-                  ? "Saved samples from this browser during that round."
+                  ? previousOutcome?.source === "chain"
+                    ? "On-chain previous round snapshot."
+                    : "Saved samples from this browser during that round."
                   : undefined
               }
               symbol={binancePair}

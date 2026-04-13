@@ -21,6 +21,13 @@ type AdminMarketParams = {
   initialAnswer?: bigint;
 };
 
+type OutboundMessage = {
+  destination: `0x${string}`;
+  payload: Uint8Array;
+  label: string;
+  gasLimit?: bigint;
+};
+
 let cachedInjector: { address: string; signer: any; nonce: BN } | null = null;
 
 async function getInjector() {
@@ -84,6 +91,75 @@ async function sendMessage(
   });
 }
 
+async function sendBatchMessages(
+  api: GearApi,
+  messages: OutboundMessage[],
+  batchLabel: string,
+  defaultGasLimit: bigint = 150_000_000_000n
+): Promise<void> {
+  await api.isReady;
+  const injector = await getInjector();
+
+  let nonce = injector.nonce.clone();
+  if (nonce.toNumber() < 0) {
+    nonce = await (api.rpc as any).system.accountNextIndex(injector.address);
+  }
+  injector.nonce = nonce.addn(1);
+
+  const utility = (api.tx as any).utility;
+  if (!utility?.batchAll) {
+    for (const m of messages) {
+      await sendMessage(api, m.destination, m.payload, m.label, m.gasLimit ?? defaultGasLimit);
+    }
+    return;
+  }
+
+  const calls = messages.map((m) =>
+    api.message.send(
+      {
+        destination: m.destination,
+        payload: m.payload,
+        gasLimit: m.gasLimit ?? defaultGasLimit,
+        value: 0,
+      },
+      undefined,
+      undefined
+    )
+  );
+
+  const tx = utility.batchAll(calls);
+  await new Promise<void>((resolve, reject) => {
+    (tx as any)
+      .signAndSend(
+        injector.address,
+        { signer: injector.signer, nonce },
+        (result: any) => {
+          const { status, dispatchError, events } = result;
+
+          if (dispatchError) {
+            reject(new Error(`${batchLabel}: ${dispatchError.toString()}`));
+            return;
+          }
+
+          // batchAll should fail atomically, but this event check provides explicit diagnostics.
+          for (const record of events ?? []) {
+            const evt = record?.event;
+            if (evt?.section === "utility" && evt?.method === "BatchInterrupted") {
+              const idx = evt.data?.[0]?.toString?.() ?? "?";
+              reject(new Error(`${batchLabel}: batch interrupted at call #${idx}`));
+              return;
+            }
+          }
+
+          if (status?.isInBlock || status?.isFinalized) {
+            resolve();
+          }
+        }
+      )
+      .catch((e: unknown) => reject(e));
+  });
+}
+
 export async function createOnChainMarket(params: AdminMarketParams): Promise<void> {
   const { api, account, diaSymbol, assetKey, assetId, seedFinHuman, feeBps, initialAnswer = 100_000_000n } = params;
 
@@ -93,9 +169,35 @@ export async function createOnChainMarket(params: AdminMarketParams): Promise<vo
   const seed = finHumanToBaseUnits(seedFinHuman);
   const approveAmount = seed * 2n;
 
-  await sendMessage(api, MARKET_PROGRAM_ID as `0x${string}`, encodeOracleAddAsset(api, diaSymbol, 8, assetKey), `Oracle.AddAsset(${diaSymbol})`);
-  await sendMessage(api, MARKET_PROGRAM_ID as `0x${string}`, encodeOracleSubmitRound(api, assetId, initialAnswer), `Oracle.SubmitRound(${assetId})`);
-  await sendMessage(api, MARKET_PROGRAM_ID as `0x${string}`, encodeFinRegisterAsset(api, assetKey, assetId), `Fin.RegisterAsset(${assetKey})`);
-  await sendMessage(api, FIN_PROGRAM_ID as `0x${string}`, encodeVftApprove(api, MARKET_PROGRAM_ID, approveAmount), "Vft.Approve(seed)");
-  await sendMessage(api, MARKET_PROGRAM_ID as `0x${string}`, encodeFinStartRound(api, assetKey, seed, feeBps), `Fin.StartRound(${assetKey})`);
+  await sendBatchMessages(
+    api,
+    [
+      {
+        destination: MARKET_PROGRAM_ID as `0x${string}`,
+        payload: encodeOracleAddAsset(api, diaSymbol, 8, assetKey),
+        label: `Oracle.AddAsset(${diaSymbol})`,
+      },
+      {
+        destination: MARKET_PROGRAM_ID as `0x${string}`,
+        payload: encodeOracleSubmitRound(api, assetId, initialAnswer),
+        label: `Oracle.SubmitRound(${assetId})`,
+      },
+      {
+        destination: MARKET_PROGRAM_ID as `0x${string}`,
+        payload: encodeFinRegisterAsset(api, assetKey, assetId),
+        label: `Fin.RegisterAsset(${assetKey})`,
+      },
+      {
+        destination: FIN_PROGRAM_ID as `0x${string}`,
+        payload: encodeVftApprove(api, MARKET_PROGRAM_ID, approveAmount),
+        label: "Vft.Approve(seed)",
+      },
+      {
+        destination: MARKET_PROGRAM_ID as `0x${string}`,
+        payload: encodeFinStartRound(api, assetKey, seed, feeBps),
+        label: `Fin.StartRound(${assetKey})`,
+      },
+    ],
+    `CreateMarket(${assetKey})`
+  );
 }

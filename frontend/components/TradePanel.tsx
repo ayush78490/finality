@@ -251,13 +251,13 @@ export function TradePanel({
   }, [tradePreview, finAmount, poolOdds, side]);
 
   return (
-    <div className="rounded-2xl sm:rounded-3xl border border-[#1f3142] bg-[linear-gradient(180deg,#111b26_0%,#0f1822_100%)] p-3 sm:p-4 md:p-5">
-      <div className="mb-4 flex items-center justify-between border-b border-[#243547] pb-3">
-        <div className="flex items-center gap-3 sm:gap-4 text-lg sm:text-xl font-semibold">
+    <div className="rounded-2xl sm:rounded-3xl border border-[#1f3142] bg-[linear-gradient(180deg,#111b26_0%,#0f1822_100%)] p-3 xs:p-4 sm:p-5 md:p-6">
+      <div className="mb-3 sm:mb-4 flex items-center justify-between border-b border-[#243547] pb-3">
+        <div className="flex items-center gap-2 xs:gap-3 sm:gap-4 text-base xs:text-lg sm:text-xl font-semibold">
           <button className="border-b-2 border-white pb-1 text-white">Buy</button>
           <button className="pb-1 text-[#7f93a7]">Sell</button>
         </div>
-        <button className="flex items-center gap-1 text-base sm:text-lg font-semibold text-[#d7e2ec]">
+        <button className="flex items-center gap-1 text-sm xs:text-base sm:text-lg font-semibold text-[#d7e2ec]">
           Market
           <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4" fill="none">
             <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -281,11 +281,11 @@ export function TradePanel({
         )}
       </div>
 
-      <div className="mb-4 sm:mb-5 grid grid-cols-2 gap-2">
+      <div className="mb-3 sm:mb-5 grid grid-cols-2 gap-2">
         <button
           type="button"
           onClick={() => setSide("up")}
-          className={`rounded-xl py-2.5 sm:py-3 text-lg sm:text-xl font-semibold transition ${
+          className={`rounded-xl py-2 sm:py-3 text-base xs:text-lg sm:text-xl font-semibold transition ${
             side === "up"
               ? "border border-[#3aa062]/50 bg-[#3aa062] text-[#ddf7e8]"
               : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
@@ -299,7 +299,7 @@ export function TradePanel({
         <button
           type="button"
           onClick={() => setSide("down")}
-          className={`rounded-xl py-2.5 sm:py-3 text-lg sm:text-xl font-semibold transition ${
+          className={`rounded-xl py-2 sm:py-3 text-base xs:text-lg sm:text-xl font-semibold transition ${
             side === "down"
               ? "border border-[#d83a3f]/50 bg-[#d42f34] text-[#ffe1e3]"
               : "border border-[#1e2a36] bg-[#1b2634] text-[#75879a]"
@@ -332,32 +332,32 @@ export function TradePanel({
       )}
 
       <div className="mb-4">
-        <div className="flex items-end justify-between">
-          <div className="text-lg sm:text-xl font-semibold text-[#d8e2ec]">Amount</div>
-          <div className="font-mono text-3xl sm:text-4xl md:text-5xl font-bold text-[#dce7f2]">
+        <div className="flex items-end justify-between gap-2">
+          <div className="text-sm xs:text-base sm:text-lg md:text-xl font-semibold text-[#d8e2ec]">Amount</div>
+          <div className="font-mono text-xl xs:text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-[#dce7f2]">
             $<input
               type="number"
               inputMode="decimal"
               placeholder="0"
-              className="w-20 sm:w-24 bg-transparent text-inherit font-inherit font-bold outline-none placeholder:text-[#5a6a7a] placeholder:font-mono placeholder:text-3xl sm:placeholder:text-4xl md:placeholder:text-5xl"
+              className="w-14 xs:w-16 sm:w-20 md:w-24 bg-transparent text-inherit font-inherit font-bold outline-none placeholder:text-[#5a6a7a] placeholder:font-mono placeholder:text-xl xs:placeholder:text-2xl sm:placeholder:text-3xl md:placeholder:text-4xl lg:placeholder:text-5xl"
               value={finAmount}
               onChange={(e) => setFinAmount(e.target.value)}
             />
           </div>
         </div>
 
-        <div className="mt-3 sm:mt-4 grid grid-cols-4 sm:grid-cols-6 gap-2">
-          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 1).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$1</button>
-          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 5).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$5</button>
-          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 10).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$10</button>
-          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 100).toString())} className="rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">+$100</button>
-          <button type="button" onClick={() => setFinAmount("1")} className="hidden sm:block rounded-xl bg-[#1c2a39] py-2 text-sm sm:text-base font-semibold text-[#c6d4e2]">$1</button>
-          <button type="button" onClick={() => setFinAmount("10")} className="hidden sm:block rounded-xl bg-[#2a3948] py-2 text-sm sm:text-base font-semibold text-white">Max</button>
+        <div className="mt-2 sm:mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-1.5 sm:gap-2">
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 1).toString())} className="rounded-xl bg-[#1c2a39] py-1.5 sm:py-2 text-[11px] xs:text-xs sm:text-sm md:text-base font-semibold text-[#c6d4e2]">+$1</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 5).toString())} className="rounded-xl bg-[#1c2a39] py-1.5 sm:py-2 text-[11px] xs:text-xs sm:text-sm md:text-base font-semibold text-[#c6d4e2]">+$5</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 10).toString())} className="rounded-xl bg-[#1c2a39] py-1.5 sm:py-2 text-[11px] xs:text-xs sm:text-sm md:text-base font-semibold text-[#c6d4e2]">+$10</button>
+          <button type="button" onClick={() => setFinAmount((Number(finAmount || "0") + 100).toString())} className="hidden sm:block rounded-xl bg-[#1c2a39] py-1.5 sm:py-2 text-xs sm:text-sm md:text-base font-semibold text-[#c6d4e2]">+$100</button>
+          <button type="button" onClick={() => setFinAmount("1")} className="hidden md:block rounded-xl bg-[#1c2a39] py-1.5 sm:py-2 text-xs sm:text-sm md:text-base font-semibold text-[#c6d4e2]">$1</button>
+          <button type="button" onClick={() => setFinAmount("10")} className="hidden md:block rounded-xl bg-[#2a3948] py-1.5 sm:py-2 text-xs sm:text-sm md:text-base font-semibold text-white">Max</button>
         </div>
       </div>
 
       {viewMode === "live" && tradePreview && roundDetail?.kind === "round" && (
-        <div className="bg-[#1a2636] rounded-xl px-3 py-3 mb-4 text-xs">
+        <div className="bg-[#1a2636] rounded-xl px-3 py-3 mb-4 text-[11px] xs:text-xs">
           <div className="text-[10px] font-semibold text-[#6f8296] mb-2">Preview</div>
           <div className="space-y-1.5 text-[#8fa4b7]">
             <div className="flex justify-between">
@@ -386,15 +386,15 @@ export function TradePanel({
         </div>
       )}
 
-      <div className="mb-4 border-t border-[#1f2f3f] pt-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <div className="mb-4 border-t border-[#1f2f3f] pt-3 sm:pt-4">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="text-lg sm:text-xl font-semibold text-[#d8e2ec]">To win</div>
-            <div className="mt-1 text-xs sm:text-sm text-[#93a5b7]">
+            <div className="text-sm xs:text-base sm:text-lg md:text-xl font-semibold text-[#d8e2ec]">To win</div>
+            <div className="mt-0.5 sm:mt-1 text-[10px] xs:text-[11px] sm:text-xs md:text-sm text-[#93a5b7]">
               Avg. Price {side === "up" ? `${poolOdds?.upPct ?? "--"}%` : `${poolOdds?.downPct ?? "--"}%`}
             </div>
           </div>
-          <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-right font-mono text-2xl sm:text-3xl md:text-4xl font-bold text-[#3bc777]">
+          <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-right font-mono text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold text-[#3bc777]">
             {toWinByOdds ? `${toWinByOdds} FIN` : "--"}
           </div>
         </div>
@@ -404,7 +404,7 @@ export function TradePanel({
         type="button"
         disabled={buyDisabled}
         onClick={onBuy}
-        className="w-full rounded-xl sm:rounded-2xl bg-[#1a8de2] px-3 sm:px-4 py-2.5 sm:py-3 text-base sm:text-lg font-semibold text-white transition hover:bg-[#2a9aea] disabled:cursor-not-allowed disabled:opacity-40"
+        className="w-full rounded-xl bg-[#1a8de2] px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 text-sm xs:text-base sm:text-lg font-semibold text-white transition hover:bg-[#2a9aea] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {txPending
           ? "Signing..."

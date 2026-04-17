@@ -223,41 +223,41 @@ export function SportsMarketConsole({ market }: Props) {
   const kickoff = fixture?.starting_at ? new Date(fixture.starting_at) : null;
 
   return (
-    <section className="mx-auto max-w-[1400px] px-4 pb-8 pt-4">
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_420px]">
-        <div className="rounded-3xl border border-[#1e2f41] bg-[linear-gradient(180deg,#111a24_0%,#0d151f_100%)] p-5 sm:p-6">
-          <div className="text-sm text-[#7f94aa]">
+    <section className="mx-auto max-w-[1400px] px-3 sm:px-4 pb-8 pt-2 sm:pt-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] xl:grid-cols-[1fr_420px] gap-4 lg:gap-6">
+        <div className="rounded-2xl lg:rounded-3xl border border-[#1e2f41] bg-[linear-gradient(180deg,#111a24_0%,#0d151f_100%)] p-4 sm:p-5 lg:p-6">
+          <div className="text-xs sm:text-sm text-[#7f94aa]">
             Esports · {fixture?.league?.name ?? "League"}
           </div>
-          <h1 className="mt-2 text-3xl font-semibold text-white">{homeName} vs {awayName}</h1>
+          <h1 className="mt-1 sm:mt-2 text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold text-white">{homeName} vs {awayName}</h1>
 
-          <div className="mt-8 grid grid-cols-3 items-center">
+          <div className="mt-4 sm:mt-6 lg:mt-8 grid grid-cols-3 items-center gap-1 sm:gap-2">
             <div className="text-center">
               {home?.image_path ? (
-                <img src={home.image_path} alt={homeName} className="mx-auto h-14 w-14 rounded-md object-cover" />
+                <img src={home.image_path} alt={homeName} className="mx-auto h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 rounded-md object-cover" />
               ) : (
-                <div className="mx-auto h-14 w-14 rounded-md bg-[#1a2b3a]" />
+                <div className="mx-auto h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 rounded-md bg-[#1a2b3a]" />
               )}
-              <div className="mt-3 text-3xl font-semibold text-[#8ec7ff]">{teamShort(homeName)}</div>
+              <div className="mt-1 sm:mt-2 text-xs xs:text-sm sm:text-xl lg:text-3xl font-semibold text-[#8ec7ff] truncate px-0.5 sm:px-1">{teamShort(homeName)}</div>
             </div>
             <div className="text-center">
-              <div className="text-5xl font-semibold text-white">{score}</div>
-              <div className="mt-3 text-2xl font-semibold text-[#ff4552]">LIVE · {fixture?.result_info || "Open"}</div>
+              <div className="text-xl xs:text-2xl sm:text-4xl lg:text-5xl font-semibold text-white">{score}</div>
+              <div className="mt-1 sm:mt-2 text-xs xs:text-sm sm:text-lg lg:text-2xl font-semibold text-[#ff4552]">LIVE · {fixture?.result_info || "Open"}</div>
             </div>
             <div className="text-center">
               {away?.image_path ? (
-                <img src={away.image_path} alt={awayName} className="mx-auto h-14 w-14 rounded-md object-cover" />
+                <img src={away.image_path} alt={awayName} className="mx-auto h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 rounded-md object-cover" />
               ) : (
-                <div className="mx-auto h-14 w-14 rounded-md bg-[#1a2b3a]" />
+                <div className="mx-auto h-8 w-8 xs:h-10 xs:w-10 sm:h-12 sm:w-12 lg:h-14 lg:w-14 rounded-md bg-[#1a2b3a]" />
               )}
-              <div className="mt-3 text-3xl font-semibold text-[#dbe8f5]">{teamShort(awayName)}</div>
+              <div className="mt-1 sm:mt-2 text-xs xs:text-sm sm:text-xl lg:text-3xl font-semibold text-[#dbe8f5] truncate px-0.5 sm:px-1">{teamShort(awayName)}</div>
             </div>
           </div>
 
-          <div className="mt-8 text-3xl font-semibold text-[#80bfff]">{totalLiquidityFin}</div>
+          <div className="mt-4 sm:mt-6 lg:mt-8 text-lg xs:text-xl sm:text-2xl lg:text-3xl font-semibold text-[#80bfff]">{totalLiquidityFin}</div>
 
-          <div className="mt-4 rounded-xl border border-[#203446] bg-[#0d151f] p-3">
-            <div className="relative h-[280px] w-full">
+          <div className="mt-3 sm:mt-4 rounded-xl border border-[#203446] bg-[#0d151f] p-2 sm:p-3">
+            <div className="relative h-[160px] xs:h-[180px] sm:h-[200px] md:h-[240px] lg:h-[280px] w-full">
               <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full" preserveAspectRatio="none">
                 {[0, 25, 50, 75, 100].map((y) => {
                   const py = height - (y / 100) * height;
@@ -271,24 +271,24 @@ export function SportsMarketConsole({ market }: Props) {
                 <path d={chartPath(chartDown, width, height)} fill="none" stroke="#ff2f53" strokeWidth="4" />
               </svg>
               <div className="absolute right-2 top-2 text-right">
-                <div className="text-4xl font-semibold text-[#79b8ff]">{pct.up.toFixed(1)}%</div>
-                <div className="text-base text-[#9fb2c6]">{teamShort(homeName)}</div>
+                <div className="text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-[#79b8ff]">{pct.up.toFixed(1)}%</div>
+                <div className="text-[10px] xs:text-xs sm:text-sm lg:text-base text-[#9fb2c6]">{teamShort(homeName)}</div>
               </div>
               <div className="absolute right-2 bottom-2 text-right">
-                <div className="text-4xl font-semibold text-[#ff2f53]">{pct.down.toFixed(1)}%</div>
-                <div className="text-base text-[#c2d2e1]">{teamShort(awayName)}</div>
+                <div className="text-lg xs:text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-[#ff2f53]">{pct.down.toFixed(1)}%</div>
+                <div className="text-[10px] xs:text-xs sm:text-sm lg:text-base text-[#c2d2e1]">{teamShort(awayName)}</div>
               </div>
             </div>
           </div>
 
           {kickoff ? (
-            <div className="mt-3 text-sm text-[#7f94aa]">
+            <div className="mt-2 sm:mt-3 text-xs sm:text-sm text-[#7f94aa]">
               {kickoff.toLocaleDateString()} {kickoff.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </div>
           ) : null}
         </div>
 
-        <aside>
+        <aside className="w-full lg:w-[340px] xl:w-auto">
           <TradePanel
             market={market}
             roundDetail={effectiveRoundDetail}

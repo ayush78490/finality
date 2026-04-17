@@ -326,10 +326,57 @@ export function MarketGrid() {
   }, [api, account, markets]);
 
   return (
-    <section className="mx-auto max-w-[1300px] px-2 pb-8 pt-4 sm:px-4 sm:pb-12 sm:pt-6 md:pb-16 md:pt-8">
-      <div className="flex items-start gap-4 lg:gap-6">
+    <section className="mx-auto max-w-[1300px] px-3 pb-8 pt-4 sm:px-4 sm:pb-12 sm:pt-6 md:pb-16 md:pt-8 lg:px-6">
+      <div className="flex flex-col lg:flex-row items-start gap-4 lg:gap-6">
+        {/* Mobile/Tablet Category Dropdown */}
+        <div className="w-full lg:hidden">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setTopicsExpanded((v) => !v)}
+              className="flex w-full items-center justify-between rounded-xl border border-line/70 bg-panel/70 px-4 py-3 text-left text-[14px] font-semibold text-white backdrop-blur-md"
+            >
+              <span>Category: {TOPIC_LABELS[selectedTopic as keyof typeof TOPIC_LABELS] || selectedTopic}</span>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                className={`transition-transform ${topicsExpanded ? "rotate-180" : ""}`}
+              >
+                <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {topicsExpanded && (
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border border-line/70 bg-panel/95 p-2 shadow-lg backdrop-blur-md">
+                {CATEGORY_TOPICS.map((topic) => {
+                  const active = selectedTopic === topic;
+                  return (
+                    <button
+                      key={topic}
+                      type="button"
+                      onClick={() => {
+                        onTopicSelect(topic);
+                        setTopicsExpanded(false);
+                      }}
+                      className={`flex w-full items-center rounded-lg px-3 py-2.5 text-[14px] font-medium transition ${
+                        active
+                          ? "bg-shore/15 text-shore border border-shore/30"
+                          : "border border-transparent text-mist hover:bg-line/30 hover:text-white"
+                      }`}
+                    >
+                      {TOPIC_LABELS[topic]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Desktop Sidebar */}
         <aside
-          className={`sticky top-24 self-start rounded-2xl border border-line/70 bg-panel/70 p-2 backdrop-blur-md transition-all duration-300 ${
+          className={`hidden lg:block sticky top-24 self-start rounded-2xl border border-line/70 bg-panel/70 p-2 backdrop-blur-md transition-all duration-300 ${
             topicsExpanded ? "w-56" : "w-16"
           }`}
         >
@@ -372,8 +419,8 @@ export function MarketGrid() {
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1">
-          <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="min-w-0 flex-1 w-full">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 sm:gap-4">
             {displayMarkets.map((m) => (
               <MarketCard
                 key={m.slug}

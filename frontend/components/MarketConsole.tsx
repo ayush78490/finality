@@ -923,11 +923,11 @@ export function MarketConsole({ market }: Props) {
       : tick?.human ?? null;
 
   return (
-    <div className="mx-auto grid max-w-[1700px] gap-3 sm:gap-4 md:gap-5 px-2 sm:px-4 pb-8 sm:pb-10 md:pb-12 pt-2 sm:pt-4 lg:grid-cols-[1.45fr_.55fr] lg:px-6">
-      <section className="rounded-2xl sm:rounded-3xl border border-[#1e2f41] bg-[linear-gradient(180deg,#0f1822_0%,#0d1721_100%)] p-4 sm:p-5 md:p-6">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap items-start justify-between gap-3 sm:gap-5">
-          <div className="flex items-start gap-2 sm:gap-3">
-            <div className="relative grid h-10 w-10 sm:h-12 sm:w-12 place-items-center overflow-hidden rounded-lg sm:rounded-xl border border-[#2b4358] bg-[#101b26] text-2xl sm:text-3xl font-black text-white">
+    <div className="mx-auto grid max-w-[1700px] gap-4 lg:gap-5 px-3 sm:px-4 lg:px-6 pb-8 sm:pb-10 md:pb-12 pt-2 sm:pt-4 grid-cols-1 md:grid-cols-[1fr_340px] lg:grid-cols-[1.45fr_380px] xl:grid-cols-[1.45fr_.55fr]">
+      <section className="rounded-2xl sm:rounded-3xl border border-[#1e2f41] bg-[linear-gradient(180deg,#0f1822_0%,#0d1721_100%)] p-3 sm:p-4 md:p-5 lg:p-6">
+        <div className="flex flex-col lg:flex-row lg:flex-wrap items-start justify-between gap-3 sm:gap-4 lg:gap-5">
+          <div className="flex items-start gap-2 sm:gap-3 w-full lg:w-auto">
+            <div className="relative grid h-9 w-9 sm:h-10 sm:w-10 lg:h-12 lg:w-12 place-items-center overflow-hidden rounded-lg lg:rounded-xl border border-[#2b4358] bg-[#101b26] text-xl sm:text-2xl lg:text-3xl font-black text-white shrink-0">
               <span className="pointer-events-none absolute inset-0 grid place-items-center">
                 {market.short.slice(0, 1)}
               </span>
@@ -937,13 +937,13 @@ export function MarketConsole({ market }: Props) {
                   alt={market.label}
                   fill
                   unoptimized
-                  className="relative z-10 object-contain p-1.5 sm:p-2"
+                  className="relative z-10 object-contain p-1.5 lg:p-2"
                 />
               ) : null}
             </div>
-            <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl font-semibold leading-tight tracking-tight text-white md:text-[2.25rem]">{market.label} Up or Down</h1>
-              <p className="mt-0.5 sm:mt-1 text-base sm:text-lg text-[#8ea4b8] md:text-xl">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold leading-tight tracking-tight text-white xl:text-[2.25rem]">{market.label} Up or Down</h1>
+              <p className="mt-0.5 lg:mt-1 text-xs sm:text-sm md:text-base lg:text-lg text-[#8ea4b8] xl:text-xl truncate">
                 {roundDetail?.kind === "round"
                   ? fmtRange(roundDetail.startTs, roundDetail.endTs)
                   : "Waiting for active round"}
@@ -951,41 +951,41 @@ export function MarketConsole({ market }: Props) {
             </div>
           </div>
 
-          <div className="flex items-start gap-4 sm:gap-8 mt-2 sm:mt-0">
+          <div className="flex items-start gap-3 sm:gap-4 lg:gap-8 mt-1 lg:mt-0 w-full lg:w-auto justify-between lg:justify-start">
             <div className="flex items-center gap-2">
               <div className="flex rounded-lg border border-[#2a3b4b] overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setViewMode("live")}
-                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                  className={`px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium transition ${
                     viewMode === "live"
                       ? "bg-[#2d475f] text-white"
                       : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
                   }`}
                 >
-                  Live Market
+                  Live
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode("history")}
                   disabled={!previousOutcome}
-                  className={`px-3 py-1.5 text-xs font-medium transition ${
+                  className={`px-2 sm:px-3 py-1.5 text-[11px] sm:text-xs font-medium transition ${
                     viewMode === "history"
                       ? "bg-[#2d475f] text-white"
                       : "bg-[#111b25] text-[#8ea4b8] hover:text-white"
                   } disabled:cursor-not-allowed disabled:opacity-50`}
                 >
-                  Previous Market
+                  History
                 </button>
               </div>
             </div>
-            <div className="text-right">
-              <div className="font-mono text-3xl sm:text-4xl font-semibold text-[#ff4c55] md:text-[2.6rem]">
+            <div className="text-right shrink-0">
+              <div className="font-mono text-xl sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-[#ff4c55] xl:text-[2.6rem]">
                 {timeLeftSec !== null
                   ? `${String(Math.floor(timeLeftSec / 60)).padStart(2, "0")}  ${String(timeLeftSec % 60).padStart(2, "0")}`
                   : "00  00"}
               </div>
-              <div className="mt-0.5 sm:mt-1 flex justify-end gap-3 sm:gap-6 text-xs sm:text-sm text-[#7f93a7]">
+              <div className="mt-0.5 lg:mt-1 flex justify-end gap-2 sm:gap-3 lg:gap-6 text-[10px] sm:text-xs lg:text-sm text-[#7f93a7]">
                 <span>MINS</span>
                 <span>SECS</span>
               </div>
@@ -993,23 +993,23 @@ export function MarketConsole({ market }: Props) {
           </div>
         </div>
 
-        <div className="mt-4 sm:mt-6 grid max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
+        <div className="mt-4 sm:mt-6 grid max-w-2xl grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4">
           <div>
-            <div className="text-base sm:text-lg font-semibold text-[#7f93a7]">Price To Beat</div>
-            <div className="mt-1 font-mono text-3xl sm:text-4xl font-semibold text-[#98a8b9] md:text-[2.6rem]">
+            <div className="text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-[#7f93a7]">Price To Beat</div>
+            <div className="mt-1 font-mono text-lg sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-[#98a8b9] xl:text-[2.6rem] truncate">
               {effectivePriceToBeat != null ? `$${fmtUsd(effectivePriceToBeat)}` : "..."}
             </div>
           </div>
-          <div className="border-t border-[#203346] pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-            <div className="flex items-center gap-2 text-base sm:text-lg font-semibold text-[#f6a61f]">
-              <span>Current Price</span>
+          <div className="border-l-0 xs:border-l border-[#203346] xs:pl-3 sm:pl-4">
+            <div className="flex flex-col xs:flex-row xs:items-center gap-1 xs:gap-2 text-xs sm:text-sm md:text-base lg:text-lg font-semibold text-[#f6a61f]">
+              <span>Current</span>
               {skew ? (
-                <span className={`text-xs sm:text-sm ${skew.delta >= 0 ? "text-[#39d27d]" : "text-[#ff4b52]"}`}>
+                <span className={`text-[10px] sm:text-xs lg:text-sm ${skew.delta >= 0 ? "text-[#39d27d]" : "text-[#ff4b52]"}`}>
                   {skew.delta >= 0 ? `▲ $${fmtUsd(Math.abs(skew.delta))}` : `▼ $${fmtUsd(Math.abs(skew.delta))}`}
                 </span>
               ) : null}
             </div>
-            <div className="mt-1 font-mono text-3xl sm:text-4xl font-semibold text-[#ffb022] md:text-[2.6rem]">
+            <div className="mt-1 font-mono text-lg sm:text-2xl md:text-3xl lg:text-4xl font-semibold text-[#ffb022] xl:text-[2.6rem] truncate">
               {tick ? `$${fmtUsd(tick.human)}` : "..."}
             </div>
           </div>
@@ -1178,8 +1178,8 @@ export function MarketConsole({ market }: Props) {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-3 lg:grid-cols-[320px_1fr]">
-          <div className="relative overflow-hidden rounded-3xl border border-[#26384a] bg-[linear-gradient(180deg,#121f2c_0%,#0d1721_100%)] p-4 sm:p-5">
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-[280px_1fr] xl:grid-cols-[320px_1fr]">
+          <div className="relative overflow-hidden rounded-2xl lg:rounded-3xl border border-[#26384a] bg-[linear-gradient(180deg,#121f2c_0%,#0d1721_100%)] p-3 sm:p-4 lg:p-5">
             <div className="pointer-events-none absolute right-0 top-0 h-14 w-24 rounded-bl-[24px] border-b border-l border-[#2a4155] bg-[#0b141d]" />
             <div className="pointer-events-none absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-[#2e4a63] bg-[#122232] text-[#8da7be]">
               <span className="text-sm leading-none">•••</span>
@@ -1187,7 +1187,7 @@ export function MarketConsole({ market }: Props) {
 
             <div className="relative pr-16">
               <div className="text-sm font-semibold text-[#dbe7f3]">My Balance</div>
-              <div className="mt-2 font-mono text-3xl font-semibold text-white sm:text-[2.2rem]">
+              <div className="mt-2 font-mono text-2xl sm:text-3xl font-semibold text-white sm:text-[2.2rem]">
                 {account
                   ? `$${
                       Number((tVaraBalance && Number.isFinite(Number(tVaraBalance)) ? Number(tVaraBalance) : 0) +
@@ -1236,7 +1236,7 @@ export function MarketConsole({ market }: Props) {
               </span>
               <span>{viewMode === "history" ? "Reference only" : `Binance spot · ${binancePair}`}</span>
             </div>
-            <div className="relative mt-3 h-[260px] overflow-hidden rounded-2xl border border-[#223447] bg-[#0b141d] p-1.5 sm:h-72 sm:p-2 md:h-80">
+            <div className="relative mt-3 h-[200px] sm:h-[220px] md:h-[260px] lg:h-72 xl:h-80 overflow-hidden rounded-2xl border border-[#223447] bg-[#0b141d] p-1.5 sm:p-2">
               <PriceChart
                 points={chartPointsLive}
                 priceToBeat={chartBeat}
@@ -1259,22 +1259,22 @@ export function MarketConsole({ market }: Props) {
           </div>
         </div>
 
-        <div className="mt-6 rounded-3xl border border-[#21374b] bg-[linear-gradient(180deg,#111c28_0%,#0d1721_100%)] p-4 sm:p-5">
+        <div className="mt-6 rounded-2xl lg:rounded-3xl border border-[#21374b] bg-[linear-gradient(180deg,#111c28_0%,#0d1721_100%)] p-3 sm:p-4 lg:p-5">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm sm:text-base font-semibold text-[#dbe7f3]">Proposition to buy</h3>
-            <span className="rounded-lg border border-[#2b4359] bg-[#122131] px-2.5 py-1 text-[11px] font-medium text-[#8fa6bb]">
+            <h3 className="text-xs sm:text-sm lg:text-base font-semibold text-[#dbe7f3]">Proposition to buy</h3>
+            <span className="rounded-lg border border-[#2b4359] bg-[#122131] px-2 py-1 sm:px-2.5 sm:py-1 text-[11px] font-medium text-[#8fa6bb]">
               Sort
             </span>
           </div>
 
-          <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-xs sm:text-sm">
+          <div className="mt-3 -mx-3 px-3 overflow-x-auto">
+            <table className="min-w-[480px] w-full text-xs sm:text-sm md:min-w-[500px]">
               <thead>
                 <tr className="text-left text-[#72879b]">
                   <th className="pb-2 pr-4 font-medium">Currency</th>
-                  <th className="pb-2 pr-4 font-medium">Price</th>
+                  <th className="pb-2 pr-4 font-medium hidden sm:table-cell">Price</th>
                   <th className="pb-2 pr-4 font-medium">7 Days Market</th>
-                  <th className="pb-2 pr-4 font-medium">24H Change</th>
+                  <th className="pb-2 pr-4 font-medium hidden md:table-cell">24H Change</th>
                   <th className="pb-2 font-medium text-right">Action</th>
                 </tr>
               </thead>
@@ -1303,11 +1303,11 @@ export function MarketConsole({ market }: Props) {
                           <span>{row.symbol}</span>
                         </div>
                       </td>
-                      <td className="py-2.5 pr-4 text-[#c7d6e5]">
+                      <td className="py-2.5 pr-4 text-[#c7d6e5] hidden sm:table-cell">
                         {row.price != null ? `$${row.price.toLocaleString(undefined, { maximumFractionDigits: row.price > 100 ? 2 : 6 })}` : "--"}
                       </td>
                       <td className="py-2.5 pr-4">
-                        <svg viewBox="0 0 240 34" className="h-8 w-[120px] sm:w-[150px]" fill="none" aria-hidden="true">
+                        <svg viewBox="0 0 240 34" className="h-6 w-[100px] sm:h-8 sm:w-[120px] md:w-[150px]" fill="none" aria-hidden="true">
                           <polyline
                             points={row.sparkPoints}
                             stroke={up ? "#39d27d" : "#f26b73"}
@@ -1317,13 +1317,13 @@ export function MarketConsole({ market }: Props) {
                           />
                         </svg>
                       </td>
-                      <td className={`py-2.5 pr-4 font-semibold ${up ? "text-[#39d27d]" : "text-[#f26b73]"}`}>
+                      <td className={`py-2.5 pr-4 font-semibold hidden md:table-cell ${up ? "text-[#39d27d]" : "text-[#f26b73]"}`}>
                         {change != null ? `${up ? "↗" : "↘"}${Math.abs(change).toFixed(2)}%` : "--"}
                       </td>
                       <td className="py-2.5 text-right">
                         <a
                           href={`/market/${row.slug}`}
-                          className="inline-flex items-center rounded-full border border-[#226bc8] bg-[#153d71] px-3 py-1 text-xs font-semibold text-[#b8dcff] transition hover:bg-[#1b4e8e]"
+                          className="inline-flex items-center rounded-full border border-[#226bc8] bg-[#153d71] px-2 sm:px-3 py-1 text-xs font-semibold text-[#b8dcff] transition hover:bg-[#1b4e8e]"
                         >
                           Trade
                         </a>
@@ -1350,7 +1350,7 @@ export function MarketConsole({ market }: Props) {
         </div>
       </section>
 
-      <aside className="relative z-10 min-w-0">
+      <aside className="relative z-10 min-w-0 w-full md:w-[340px] lg:w-[380px] xl:w-auto">
         <TradePanel
           market={market}
           roundDetail={roundDetail}

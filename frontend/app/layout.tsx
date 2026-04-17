@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, Outfit } from "next/font/google";
 import "./globals.css";
 import { WalletProvider } from "@/lib/wallet";
@@ -18,6 +18,14 @@ export const metadata: Metadata = {
   description:
     "Five-minute Up / Down markets on Vara testnet. Oracle-backed settlement via DIA + on-chain program.",
   icons: { icon: "/finalityLogo.png" }
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover"
 };
 
 export default function RootLayout({

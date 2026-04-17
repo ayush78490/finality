@@ -2,6 +2,8 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@/lib/wallet";
 import {
   FIN_DECIMALS,
@@ -13,12 +15,37 @@ import { submitFaucetClaim } from "@/lib/faucet-submit";
 
 const FAUCET_AMOUNT = "100";
 
-/** Expected claim size in base units (must match on-chain default / admin config). */
 const FAUCET_AMOUNT_BASE =
   BigInt(FAUCET_AMOUNT) * 10n ** BigInt(FIN_DECIMALS);
 
-/** Treat as success if balance increased by at least this fraction of the claim (rounding / RPC lag). */
 const CLAIM_OK_FRACTION = 95n;
+
+const fadeInUp = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0 }
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1
+    }
+  }
+};
+
+const pulseAnimation = {
+  initial: { scale: 1 },
+  animate: {
+    scale: [1, 1.05, 1],
+    transition: {
+      duration: 2,
+      repeat: Infinity,
+      ease: "easeInOut"
+    }
+  }
+};
 
 export function FaucetPanel() {
   const { account, api, connect, refreshFinBalance } = useWallet();
@@ -73,7 +100,7 @@ export function FaucetPanel() {
         );
       } else if (msg.includes("treasury") || msg.includes("transfer failed")) {
         setError(
-          "The market program’s FIN treasury is empty. An admin must send FIN to the market program on the FIN token contract."
+          "The market program's FIN treasury is empty. An admin must send FIN to the market program on the FIN token contract."
         );
       } else if (msg.includes("not initialized")) {
         setError(
@@ -88,172 +115,208 @@ export function FaucetPanel() {
   }, [api, account, refreshFinBalance]);
 
   return (
-    <div className="mx-auto max-w-2xl px-3 sm:px-4 pb-14 sm:pb-20 pt-6 sm:pt-10">
-      <div className="rounded-2xl sm:rounded-3xl border border-line bg-gradient-to-b from-panel to-ink/40 p-4 sm:p-6 md:p-8">
-        <div className="text-center">
-          <div className="mx-auto mb-4 grid h-12 w-12 sm:h-16 sm:w-16 place-items-center rounded-xl sm:rounded-2xl border border-ember/30 bg-ember/10 text-2xl sm:text-3xl">
-            💧
-          </div>
-          <h1 className="font-display text-2xl sm:text-3xl text-white">FIN Faucet</h1>
-          <p className="mt-2 text-xs sm:text-sm text-mist/80">
-            Claim <span className="font-semibold text-white">{FAUCET_AMOUNT} FIN</span> tokens
-            for free — once every 24 hours — and start trading on Finality markets.
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-ink via-panel to-ink" />
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-ember/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-shore/15 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
+      </div>
+      
+      <motion.div 
+        initial="hidden"
+        animate="visible"
+        variants={staggerContainer}
+        className="relative mx-auto max-w-xl px-4 py-12 sm:py-20"
+      >
+        <motion.div 
+          variants={fadeInUp}
+          className="text-center mb-10"
+        >
+          <motion.div
+            variants={pulseAnimation}
+            className="inline-flex items-center justify-center w-24 h-24 mb-6 rounded-3xl border border-ember/30 bg-gradient-to-br from-ember/20 to-ember/5 shadow-lg shadow-ember/10"
+          >
+            <div className="relative w-14 h-14">
+              <Image
+                src="/finalityLogo.png"
+                alt="Finality"
+                fill
+                className="object-contain"
+              />
+            </div>
+          </motion.div>
+          
+          <h1 className="font-display text-4xl sm:text-5xl text-white mb-3 tracking-tight">
+            FIN <span className="text-ember">Faucet</span>
+          </h1>
+          <p className="text-mist/80 text-sm sm:text-base max-w-md mx-auto">
+            Claim free FIN tokens to start trading on Finality markets. 
+            Available once every 24 hours.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="mt-6 sm:mt-8 space-y-4">
-          <div className="rounded-2xl border border-line bg-ink/40 p-4 sm:p-5">
-            <div className="text-sm font-semibold text-white">How it works</div>
-            <ol className="mt-3 space-y-3 text-sm text-mist/80">
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-ember/40 bg-ember/10 text-xs font-bold text-ember">
-                  1
-                </span>
-                <span>
-                  Connect your <strong className="text-white">SubWallet</strong> or any
-                  Polkadot-compatible wallet. Make sure you&apos;re on the{" "}
-                  <strong className="text-white">Vara Testnet</strong>.
-                </span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-ember/40 bg-ember/10 text-xs font-bold text-ember">
-                  2
-                </span>
-                <span>
-                  Click <strong className="text-white">Claim {FAUCET_AMOUNT} FIN</strong> below.
-                  Approve the transaction in your wallet (small VARA gas fee applies).
-                </span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-ember/40 bg-ember/10 text-xs font-bold text-ember">
-                  3
-                </span>
-                <span>
-                  Once confirmed, your FIN balance updates in the header. Head to any{" "}
-                  <Link href="/" className="text-ember underline-offset-2 hover:underline">
-                    market
-                  </Link>{" "}
-                  and place your first trade!
-                </span>
-              </li>
-            </ol>
-          </div>
-
-          <div className="rounded-2xl border border-line bg-ink/40 p-4 sm:p-5">
-            <div className="text-sm font-semibold text-white">FIN Token Details</div>
-            <div className="mt-3 space-y-2 text-xs text-mist/80">
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-mist/60">Token name</span>
-                <span className="font-mono text-white">FIN (Finality)</span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-mist/60">Decimals</span>
-                <span className="font-mono text-white">12</span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="shrink-0 text-mist/60">FIN program ID</span>
-                <span className="break-all text-right font-mono text-white/80 text-[11px]">
-                  {FIN_PROGRAM_ID}
-                </span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="shrink-0 text-mist/60">Market program ID</span>
-                <span className="break-all text-right font-mono text-white/80 text-[11px]">
-                  {MARKET_PROGRAM_ID || "Not set"}
-                </span>
-              </div>
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-mist/60">Network</span>
-                <span className="font-mono text-white">Vara Testnet</span>
-              </div>
-            </div>
-            <p className="mt-3 text-[11px] leading-relaxed text-mist/55">
-              FIN is a Gear VFT (fungible token) program on Vara — it is <strong>not</strong> a
-              native VARA token. Your FIN balance is tracked by the token program and displayed
-              in the app header. SubWallet’s main balance is <strong>TVARA</strong> (gas); it does
-              not show custom FIN unless you add the token asset. You need a small amount of{" "}
-              <strong>VARA</strong> for gas on every transaction.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-ember/20 bg-ink/50 p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <motion.div 
+          variants={fadeInUp}
+          className="rounded-3xl border border-line/60 bg-panel/80 backdrop-blur-xl p-6 sm:p-8 shadow-2xl shadow-black/20"
+        >
+          <motion.div variants={fadeInUp} className="mb-8">
+            <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold text-white">Claim Tokens</div>
-                <p className="mt-1 text-xs text-mist/70">
-                  {FAUCET_AMOUNT} FIN per wallet, once every 24 hours.
-                </p>
+                <div className="text-lg font-semibold text-white">Claim Amount</div>
+                <p className="text-mist/60 text-sm mt-1">Once every 24 hours</p>
               </div>
-              <div className="rounded-xl border border-line bg-ink/40 px-3 py-2 text-center self-start sm:self-auto">
-                <div className="text-xl font-bold text-ember">{FAUCET_AMOUNT}</div>
-                <div className="text-[10px] text-mist/60">FIN</div>
-              </div>
+              <motion.div 
+                whileHover={{ scale: 1.05 }}
+                className="rounded-2xl border border-ember/30 bg-gradient-to-br from-ember/20 to-ember/5 px-6 py-3 text-center"
+              >
+                <div className="text-3xl font-bold text-ember">{FAUCET_AMOUNT}</div>
+                <div className="text-xs text-ember/70">FIN</div>
+              </motion.div>
             </div>
+          </motion.div>
 
+          <motion.div variants={fadeInUp} className="space-y-4 mb-8">
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-ink/50 border border-line/40">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-shore/20 text-shore text-sm font-bold">1</div>
+              <span className="text-mist text-sm">Connect your <strong className="text-white">wallet</strong> on Vara Testnet</span>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-ink/50 border border-line/40">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-shore/20 text-shore text-sm font-bold">2</div>
+              <span className="text-mist text-sm">Click <strong className="text-white">Claim</strong> and approve in wallet</span>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-ink/50 border border-line/40">
+              <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-shore/20 text-shore text-sm font-bold">3</div>
+              <span className="text-mist text-sm">Start trading on <Link href="/" className="text-ember">markets</Link></span>
+            </div>
+          </motion.div>
+
+          <AnimatePresence mode="wait">
             {!account ? (
-              <button
-                type="button"
-                onClick={() => connect().catch(console.error)}
-                className="mt-4 w-full cursor-pointer rounded-2xl bg-gradient-to-r from-ember to-[#f6c177] px-4 py-3 text-sm font-semibold text-ink"
+              <motion.div
+                key="connect"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
               >
-                Connect wallet to claim
-              </button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={() => connect().catch(console.error)}
+                  className="w-full cursor-pointer rounded-2xl bg-gradient-to-r from-ember to-[#f6c177] px-6 py-4 text-base font-semibold text-ink shadow-lg shadow-ember/20 transition-all hover:shadow-xl hover:shadow-ember/30"
+                >
+                  Connect Wallet
+                </motion.button>
+              </motion.div>
             ) : (
-              <button
-                type="button"
-                disabled={pending || !api || !MARKET_PROGRAM_ID}
-                onClick={() => void onClaim()}
-                className="mt-4 w-full cursor-pointer rounded-2xl bg-gradient-to-r from-ember to-[#f6c177] px-4 py-3 text-sm font-semibold text-ink disabled:cursor-not-allowed disabled:opacity-40"
+              <motion.div
+                key="claim"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
               >
-                {pending ? "Claiming… (check wallet)" : `Claim ${FAUCET_AMOUNT} FIN`}
-              </button>
+                <motion.button
+                  whileHover={!pending ? { scale: 1.02 } : {}}
+                  whileTap={!pending ? { scale: 0.98 } : {}}
+                  type="button"
+                  disabled={pending || !api || !MARKET_PROGRAM_ID}
+                  onClick={() => void onClaim()}
+                  className="w-full cursor-pointer rounded-2xl bg-gradient-to-r from-ember to-[#f6c177] px-6 py-4 text-base font-semibold text-ink shadow-lg shadow-ember/20 disabled:cursor-not-allowed disabled:opacity-50 transition-all"
+                >
+                  {pending ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <motion.span 
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="inline-block w-5 h-5 border-2 border-ink/30 border-t-ink rounded-full"
+                      />
+                      Claiming...
+                    </span>
+                  ) : `Claim ${FAUCET_AMOUNT} FIN`}
+                </motion.button>
+              </motion.div>
             )}
+          </AnimatePresence>
 
-            {error ? (
-              <div className="mt-3 whitespace-pre-line rounded-xl border border-risk/30 bg-risk/10 px-3 py-2 text-xs leading-relaxed text-risk">
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+                className="mt-4 whitespace-pre-line rounded-xl border border-risk/30 bg-risk/10 px-4 py-3 text-sm leading-relaxed text-risk"
+              >
                 {error}
-              </div>
-            ) : null}
-            {success ? (
-              <div className="mt-3 rounded-xl border border-shore/30 bg-shore/10 px-3 py-2 text-xs text-shore space-y-1">
-                <div className="font-semibold">Tokens claimed ✓</div>
-                <div className="text-shore/80">{success}</div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -10, height: 0 }}
+                className="mt-4 rounded-2xl border border-shore/30 bg-shore/10 px-4 py-4 text-sm"
+              >
+                <div className="flex items-center gap-2 text-shore font-semibold mb-2">
+                  <motion.span
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 0.5 }}
+                    className="text-lg"
+                  >
+                    ✓
+                  </motion.span>
+                  Tokens Claimed!
+                </div>
+                <div className="text-mist/80 mb-3">{success}</div>
                 <Link
                   href="/"
-                  className="mt-2 inline-block text-ember underline-offset-2 hover:underline"
+                  className="inline-flex items-center gap-1 text-ember font-medium hover:underline"
                 >
-                  Go to markets →
+                  Go to Markets
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
                 </Link>
-              </div>
-            ) : null}
-          </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
 
-          <div className="rounded-2xl border border-line bg-ink/40 p-4 sm:p-5">
-            <div className="text-sm font-semibold text-white">Need VARA for gas?</div>
-            <p className="mt-2 text-xs text-mist/80 leading-relaxed">
-              Every transaction on Vara requires a small amount of <strong className="text-white">VARA</strong> (the native token) for gas.
-              You can get testnet VARA from the{" "}
-              <a
-                href="https://idea.gear-tech.io/programs?node=wss%3A%2F%2Ftestnet.vara.network"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-ember underline-offset-2 hover:underline"
-              >
-                Gear IDEA portal
-              </a>{" "}
-              — connect your wallet there and use the built-in faucet, or ask in the{" "}
-              <a
-                href="https://discord.gg/x8ZeSy6S6K"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-ember underline-offset-2 hover:underline"
-              >
-                Vara Discord
-              </a>.
-            </p>
+        <motion.div 
+          variants={fadeInUp}
+          className="mt-8 rounded-2xl border border-line/40 bg-panel/40 p-5"
+        >
+          <div className="text-sm font-semibold text-white mb-3">Token Details</div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex flex-col">
+              <span className="text-mist/50 text-xs">Token</span>
+              <span className="text-white font-medium">FIN</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-mist/50 text-xs">Network</span>
+              <span className="text-white font-medium">Vara Testnet</span>
+            </div>
+            <div className="flex flex-col col-span-2">
+              <span className="text-mist/50 text-xs">Program ID</span>
+              <span className="text-white/70 font-mono text-xs break-all">{FIN_PROGRAM_ID}</span>
+            </div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+
+        <motion.div 
+          variants={fadeInUp}
+          className="mt-4 text-center"
+        >
+          <p className="text-mist/50 text-xs">
+            Need VARA for gas? Get it from{" "}
+            <a href="https://idea.gear-tech.io/programs?node=wss%3A%2F%2Ftestnet.vara.network" target="_blank" rel="noopener" className="text-ember hover:underline">Gear IDEA</a>
+            {" "}or{" "}
+            <a href="https://discord.gg/x8ZeSy6S6K" target="_blank" rel="noopener" className="text-ember hover:underline">Vara Discord</a>
+          </p>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

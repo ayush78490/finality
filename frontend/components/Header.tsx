@@ -222,11 +222,15 @@ export function Header() {
 
         {/* Right: Controls & Wallet */}
         <div className="hidden md:flex items-center gap-4">
-          <div className="hidden cursor-pointer items-center gap-1 text-[13px] font-medium text-mist sm:flex transition hover:text-white">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            Eng
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6-6-6"/></svg>
-          </div>
+          <Link
+            href="/faucet"
+            className="flex items-center gap-2 rounded-full border border-ember/40 bg-ember/10 px-4 py-1.5 text-[13px] font-medium text-ember transition hover:bg-ember/20"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2v10"/><path d="M5.5 8.5 12 12l6.5-3.5"/><path d="M12 22v-6"/><path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/>
+            </svg>
+            Faucet
+          </Link>
 
           {account ? (
             <div className="flex items-center gap-2 rounded-full border border-line bg-panel px-1 py-1">

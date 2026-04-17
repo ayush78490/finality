@@ -35,6 +35,12 @@ pnpm-debug.log*
 Thumbs.db
 Desktop.ini
 
+# Windows reserved device names that might be created accidentally
+**/nul
+**/con
+**/prn
+**/aux
+
 # IDE (optional — uncomment if you do not commit editor settings)
 # .vscode/
 .idea/

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@/lib/wallet";
+import { WalletModal } from "./WalletModal";
 
 export function Header() {
   const pathname = usePathname();
@@ -16,12 +17,17 @@ export function Header() {
     finBalanceError,
     finBalanceLoading,
     refreshFinBalance,
-    isAdmin
+    isAdmin,
+    showWalletModal,
+    setShowWalletModal,
+    isMobile
   } = useWallet();
 
   const prevBalanceRef = useRef<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [walletConnectError, setWalletConnectError] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     if (
@@ -39,6 +45,37 @@ export function Header() {
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
+
+  const handleWalletSelect = async (walletId?: string) => {
+    setWalletConnectError(null);
+    setConnecting(true);
+    try {
+      await connect(walletId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setWalletConnectError(msg);
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const handleHeaderConnect = async () => {
+    setWalletConnectError(null);
+    setConnecting(true);
+    try {
+      await connect();
+      // If connect succeeds without error, we're done
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // If no extension found, show wallet modal with options
+      if (msg.toLowerCase().includes("extension") || msg.toLowerCase().includes("wallet")) {
+        setShowWalletModal(true);
+      }
+      setWalletConnectError(msg);
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-transparent transition-colors duration-300">
@@ -173,7 +210,7 @@ export function Header() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => connect().catch(console.error)}
+                  onClick={handleHeaderConnect}
                   className="w-full rounded-xl border border-line bg-panel/60 px-4 py-2.5 text-[14px] font-medium text-mist transition hover:bg-line hover:text-white"
                 >
                   Login / Register
@@ -226,7 +263,7 @@ export function Header() {
           ) : (
             <button
               type="button"
-              onClick={() => connect().catch(console.error)}
+              onClick={handleHeaderConnect}
               className="rounded-full border border-line bg-panel/60 px-5 py-1.5 text-[13px] font-medium text-mist transition hover:bg-line hover:text-white whitespace-nowrap"
             >
               Login / Register
@@ -234,6 +271,14 @@ export function Header() {
           )}
         </div>
       </div>
+
+      <WalletModal
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onConnect={handleWalletSelect}
+        connecting={connecting}
+        error={walletConnectError}
+      />
     </header>
   );
 }

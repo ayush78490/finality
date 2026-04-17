@@ -18,15 +18,16 @@ type GearApiType = import("@gear-js/api").GearApi;
 type Ctx = {
   api: GearApiType | null;
   account: string | null;
-  connect: () => Promise<void>;
+  connect: (walletId?: string) => Promise<void>;
   disconnect: () => void;
   finBalance: string | null;
   finBalanceError: string | null;
   finBalanceLoading: boolean;
-  /** Returns formatted balance on success, or null. */
   refreshFinBalance: () => Promise<string | null>;
-  /** Whether the connected wallet is the admin (market creator) */
   isAdmin: boolean;
+  isMobile: boolean;
+  showWalletModal: boolean;
+  setShowWalletModal: (show: boolean) => void;
 };
 
 const WalletContext = createContext<Ctx | null>(null);
@@ -37,7 +38,9 @@ type ExtensionAccount = {
     name?: string;
     isSelected?: boolean;
     selected?: boolean;
+    source?: string;
   };
+  source?: string;
 };
 
 function accountDisplayName(acc: ExtensionAccount): string {
@@ -69,16 +72,37 @@ function pickAccountInteractive(accounts: ExtensionAccount[]): ExtensionAccount 
   return accounts[idx - 1];
 }
 
+function isMobileDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  ) || ("ontouchstart" in window && window.innerWidth < 1024);
+}
+
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [api, setApi] = useState<GearApiType | null>(null);
   const [account, setAccount] = useState<string | null>(null);
   const [finBalance, setFinBalance] = useState<string | null>(null);
   const [finBalanceError, setFinBalanceError] = useState<string | null>(null);
   const [finBalanceLoading, setFinBalanceLoading] = useState(false);
-  /** Last successful FIN read — kept on transient RPC failures so the header does not "go blank". */
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const lastFinBalanceRef = useRef<string | null>(null);
 
-  /** Computed normalized address for admin checks - derived from account */
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = isMobileDevice();
+      setIsMobile(mobile);
+    };
+    checkMobile();
+    setIsReady(true);
+    
+    const handleResize = () => checkMobile();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const normalizedAccount = useMemo(() => {
     if (!account) return null;
     return normalizeVaraAddress(account);
@@ -96,18 +120,68 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const connect = useCallback(async () => {
-    const { web3Enable, web3Accounts } = await import("@polkadot/extension-dapp");
-    await web3Enable("Finality");
-    const accs = (await web3Accounts()) as ExtensionAccount[];
-    if (accs.length === 0) throw new Error("No Polkadot-compatible account found.");
+  const connect = useCallback(async (walletId?: string) => {
+    try {
+      // Check if running in a browser environment
+      if (typeof window === "undefined") {
+        throw new Error("Wallet connection requires a browser environment");
+      }
 
-    const picked = pickAccountInteractive(accs);
-    if (!picked) return;
+      const { web3Enable, web3Accounts, web3FromSource } = await import("@polkadot/extension-dapp");
+      
+      const injected = await web3Enable("Finality");
+      
+      if (injected.length === 0) {
+        throw new Error(
+          isMobile 
+            ? "No wallet found. Please install SubWallet, Nova Wallet, or another Polkadot-compatible mobile wallet."
+            : "No Polkadot extension found. Please install SubWallet, Talisman, or Polkadot.js extension."
+        );
+      }
+      
+      const allAccounts = (await web3Accounts()) as ExtensionAccount[];
+      
+      let accounts = allAccounts;
+      
+      if (walletId && allAccounts.length > 0) {
+        const filtered = allAccounts.filter(acc => {
+          const source = acc.meta?.source || acc.source || "";
+          const walletMap: Record<string, string[]> = {
+            subwallet: ["subwallet", "SubWallet"],
+            talisman: ["talisman", "Talisman"],
+            polkadot: ["polkadot", "polkadot.js", "polkadot vault"],
+            nova: ["nova", "Nova"],
+          };
+          const keywords = walletMap[walletId] || [walletId];
+          return keywords.some(kw => source.toLowerCase().includes(kw.toLowerCase()));
+        });
+        
+        if (filtered.length > 0) {
+          accounts = filtered;
+        }
+      }
 
-    // Store the original address format from the extension (not normalized)
-    // so that getInjector can find it later when submitting transactions
-    setAccount(picked.address);
+      if (accounts.length === 0) {
+        throw new Error(
+          isMobile 
+            ? "No wallet accounts found. Please open this app from your mobile wallet's browser."
+            : "No wallet accounts found. Please create an account in your wallet extension."
+        );
+      }
+
+      const picked = pickAccountInteractive(accounts);
+      if (!picked) return;
+
+      const injector = await web3FromSource(picked.source || picked.meta?.source || "");
+      if (injector) {
+        (window as any).__injectedWeb3 = injector;
+      }
+
+      setAccount(picked.address);
+      setShowWalletModal(false);
+    } catch (error) {
+      throw error;
+    }
   }, []);
 
   const disconnect = useCallback(() => {
@@ -115,6 +189,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setFinBalance(null);
     setFinBalanceError(null);
     lastFinBalanceRef.current = null;
+    (window as any).__injectedWeb3 = undefined;
   }, []);
 
   useEffect(() => {
@@ -163,7 +238,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [api, account]);
 
-  // Fetch once on connect, then keep polling every 30 s so balance stays fresh.
   useEffect(() => {
     void refreshFinBalance();
     const id = setInterval(() => void refreshFinBalance(), 30_000);
@@ -180,7 +254,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       finBalanceError,
       finBalanceLoading,
       refreshFinBalance,
-      isAdmin: isAdminWallet(normalizedAccount)
+      isAdmin: isAdminWallet(normalizedAccount),
+      isMobile,
+      showWalletModal,
+      setShowWalletModal,
     }),
     [
       api,
@@ -191,7 +268,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       finBalance,
       finBalanceError,
       finBalanceLoading,
-      refreshFinBalance
+      refreshFinBalance,
+      isMobile,
+      showWalletModal,
     ]
   );
 
